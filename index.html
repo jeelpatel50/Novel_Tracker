@@ -55,8 +55,12 @@
     <dialog id="my_modal_1" class="modal">
         <form method="dialog" class="modal-box">
             <h3 class="font-bold text-lg">Add Novels</h3>
-            <p class="py-4">Paste links below (one per line). Supported: NovelBin, ScribbleHub, ReadNovelFull.</p>
-            <textarea id="batchLinks" class="textarea textarea-bordered w-full h-32" placeholder="https://novelbin.me/novel/...\nhttps://www.scribblehub.com/series/..."></textarea>
+            <div class="py-4 space-y-4">
+                <input type="text" id="novelName" class="input input-bordered w-full" placeholder="Novel Name (e.g. Shadow Slave)">
+                <input type="url" id="novelUrl" class="input input-bordered w-full" placeholder="Novel URL (NovelBin, ScribbleHub, etc.)">
+                <input type="number" id="initialRead" class="input input-bordered w-full" placeholder="Chapters already read (e.g. 150)">
+                <p class="text-xs text-gray-500">Note: The sync bot will update the total chapter count automatically.</p>
+            </div>
             <div class="modal-action">
                 <button class="btn" onclick="addNovels()">Import</button>
                 <button class="btn btn-ghost">Close</button>
@@ -155,33 +159,31 @@
         // --- 4. BATCH IMPORT ---
         async function addNovels() {
             if (!currentUser) return alert("Please login first");
-            const text = document.getElementById('batchLinks').value;
-            const urls = text.split('\n').filter(u => u.trim() !== '');
+            const name = document.getElementById('novelName').value.trim();
+            const url = document.getElementById('novelUrl').value.trim();
+            const read = parseInt(document.getElementById('initialRead').value) || 0;
             
-            const batch = db.batch();
-            
-            urls.forEach(url => {
-                // Generate a simplified ID from URL
-                let id = btoa(url).substring(0, 20); 
-                const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc(id);
-                
-                // We save the URL. The Backend (GitHub Actions) will fetch the Title/Chapter count later
-                // because browser CORS prevents us from fetching it here.
-                batch.set(ref, {
-                    url: url.trim(),
-                    readChapters: 0,
-                    totalChapters: 0, // Placeholder
-                    title: "Pending Sync...", // Placeholder
-                    milestone: 5, // Default: Notify if 5 chapters stack up
-                    email: currentUser.email, // Save email for notifications
-                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            });
+            if (!url) return alert("Please provide a URL");
 
-            await batch.commit();
-            document.getElementById('batchLinks').value = '';
+            // Generate a simplified ID from URL
+            let id = btoa(url).substring(0, 20); 
+            const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc(id);
+            
+            await ref.set({
+                url: url,
+                readChapters: read,
+                totalChapters: read, // Set to read count initially
+                title: name || "Pending Sync...", 
+                milestone: 5,
+                email: currentUser.email,
+                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+
+            document.getElementById('novelName').value = '';
+            document.getElementById('novelUrl').value = '';
+            document.getElementById('initialRead').value = '';
             document.getElementById('my_modal_1').close();
-            alert("Novels added! Wait for the sync bot to fetch titles (runs every 6 hours).");
+            alert("Novel added!");
         }
 
         function updateRead(docId, val) {
