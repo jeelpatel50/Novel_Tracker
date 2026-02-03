@@ -80,11 +80,20 @@ def send_email(to_email, novel_title, count):
             "chapter_count": str(count)
         }
     }
+    
     try:
-        requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
-        print(f"Email sent to {to_email}")
+        response = requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
+        
+        # --- NEW DEBUGGING CODE ---
+        if response.status_code == 200:
+            print(f"   -> Email sent successfully to {to_email}")
+        else:
+            print(f"   -> EMAIL FAILED! Status: {response.status_code}")
+            print(f"   -> Server Message: {response.text}")
+        # --------------------------
+        
     except Exception as e:
-        print(f"Email failed: {e}")
+        print(f"   -> Connection failed: {e}")
 
 # --- MAIN LOGIC (UPDATED) ---
 # We use collection_group to find ALL 'novels' collections, 
@@ -122,3 +131,4 @@ for novel in novels:
 
 if not found_any:
     print("No novels found in database. (If you just added one, wait 30s)")
+
