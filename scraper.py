@@ -6,6 +6,8 @@ import os
 import json
 import requests
 import re
+import time
+import random
 
 # --- CONFIGURATION ---
 try:
@@ -17,14 +19,31 @@ except Exception as e:
     print(f"Auth Error: {e}")
     exit(1)
 
-scraper = cloudscraper.create_scraper(browser='chrome')
+# --- BROWSER SETUP (MAXIMUM STEALTH) ---
+scraper = cloudscraper.create_scraper(
+    browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False},
+    delay=10
+)
+# Cookies to bypass 18+ checks and popups
+scraper.cookies.update({
+    'content_warning': '1', 
+    'cookieconsent_status': 'dismiss',
+    'sh_session': 'true'
+})
 
 def get_chapter_count(url):
     try:
-        # print(f"Scraping: {url}") 
-        response = scraper.get(url, timeout=20) # Increased timeout
+        # Polite Delay: Wait 2-4 seconds so we don't look like a spam bot
+        time.sleep(random.uniform(2, 4))
+        
+        response = scraper.get(url, timeout=30)
         tree = html.fromstring(response.content)
         
+        # --- DEBUG: CHECK PAGE TITLE ---
+        page_title = tree.xpath('//title/text()')
+        page_title_text = page_title[0] if page_title else "No Title Found"
+        # print(f"   > Page Loaded: '{page_title_text}'") 
+
         if "novelbin" in url:
             chapters = tree.xpath('//ul[@class="list-chapter"]//li//a/text()')
             if chapters:
@@ -34,20 +53,35 @@ def get_chapter_count(url):
             return len(chapters)
 
         elif "scribblehub" in url:
-            # DEBUG: Check if we are blocked
-            if "Just a moment..." in response.text:
-                print(f"!!! BLOCKED by Cloudflare: {url}")
-                return 0
-            
-            count_text = tree.xpath('//span[@class="cnt_chapter"]/text()')
+            # Method 1: Specific count badge
+            count_text = tree.xpath('//span[contains(@class, "cnt_chapter")]/text()')
             if count_text:
                 return int(count_text[0].replace('(', '').replace(')', ''))
-            else:
-                print(f"!!! HTML Loaded but no chapter count found: {url}")
-                # print(f"Snippet: {response.text[:500]}") # Uncomment if desperate
-                return 0
+            
+            # Method 2: Count Table rows
+            toc_items = tree.xpath('//table[contains(@class, "toc_ol")]//tr') 
+            if toc_items:
+                return len(toc_items)
+            
+            # Debugging
+            if "Just a moment" in response.text:
+                print(f"   !!! Blocked by Cloudflare: {url}")
+            return 0
 
         elif "freewebnovel" in url:
+            # STRATEGY 1: Read the "Latest Chapter" Text (Best for 30+ chapters)
+            # Usually looks like "Latest Chapter: Chapter 1234" in the header
+            latest_text = tree.xpath('//span[contains(@class, "s-last")]/a/text()') # Common selector
+            if not latest_text:
+                 latest_text = tree.xpath('//div[@class="m-newest2"]//span[@class="tit"]/text()')
+
+            if latest_text:
+                # Extract the biggest number found in that text
+                nums = re.findall(r'\d+', latest_text[0])
+                if nums:
+                    return int(nums[-1]) # Return the last number (usually the chapter ID)
+
+            # STRATEGY 2: Count the list (Fallback)
             chapters = tree.xpath('//div[@class="m-newest2"]//ul//li')
             if not chapters:
                 chapters = tree.xpath('//div[@id="chapterlist"]//p')
@@ -59,7 +93,7 @@ def get_chapter_count(url):
 
         return 0
     except Exception as e:
-        print(f"!!! CRASH scraping {url}: {e}")
+        print(f"   !!! Crash scraping {url}: {e}")
         return 0
 
 def get_title(url):
@@ -89,11 +123,16 @@ def send_email(to_email, novel_title, count):
             "chapter_count": str(count)
         }
     }
+    
     try:
-        requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
-        print(f"   -> Email sent to {to_email}")
+        response = requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
+        if response.status_code == 200:
+            print(f"   -> Email sent successfully to {to_email}")
+        else:
+            print(f"   -> EMAIL FAILED! Status: {response.status_code}")
+            print(f"   -> Server Message: {response.text}")
     except Exception as e:
-        print(f"   -> Email failed: {e}")
+        print(f"   -> Connection failed: {e}")
 
 # --- MAIN LOGIC ---
 novels = db.collection_group('novels').stream()
@@ -103,8 +142,16 @@ for novel in novels:
     found_any = True
     data = novel.to_dict()
     url = data.get('url')
+
+    # --- AUTO-FIX BAD LINKS ---
+    if "scribblehub.com" in url:
+        clean_url = url.split("/glossary/")[0].split("/stats/")[0].split("/chapter/")[0]
+        if clean_url != url:
+            print(f"   * Auto-fixing bad link: {url} -> {clean_url}")
+            url = clean_url
+            novel.reference.update({'url': url})
+    # --------------------------
     
-    # 1. Fetch Real Count
     real_total = get_chapter_count(url)
     current_title = data.get('title', 'Unknown Title')
     
@@ -114,16 +161,13 @@ for novel in novels:
         updates = {}
         updates['totalChapters'] = real_total
         
-        # 2. Fix Title if missing
         if current_title == "Pending Sync..." or current_title == "Unknown Title":
             new_title = get_title(url)
             updates['title'] = new_title
-            current_title = new_title # Update local var for email
+            current_title = new_title
         
-        # 3. Apply Update
         novel.reference.update(updates)
         
-        # 4. Check Milestone & Email
         current_read = data.get('readChapters', 0)
         milestone = data.get('milestone', 5)
         unread = real_total - current_read
@@ -134,4 +178,3 @@ for novel in novels:
 
 if not found_any:
     print("No novels found in database.")
-
