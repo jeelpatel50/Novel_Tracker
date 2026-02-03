@@ -21,8 +21,8 @@ scraper = cloudscraper.create_scraper(browser='chrome')
 
 def get_chapter_count(url):
     try:
-        # print(f"Scraping: {url}")  <-- Removed to keep logs clean
-        response = scraper.get(url, timeout=15)
+        # print(f"Scraping: {url}") 
+        response = scraper.get(url, timeout=20) # Increased timeout
         tree = html.fromstring(response.content)
         
         if "novelbin" in url:
@@ -34,9 +34,18 @@ def get_chapter_count(url):
             return len(chapters)
 
         elif "scribblehub" in url:
+            # DEBUG: Check if we are blocked
+            if "Just a moment..." in response.text:
+                print(f"!!! BLOCKED by Cloudflare: {url}")
+                return 0
+            
             count_text = tree.xpath('//span[@class="cnt_chapter"]/text()')
             if count_text:
                 return int(count_text[0].replace('(', '').replace(')', ''))
+            else:
+                print(f"!!! HTML Loaded but no chapter count found: {url}")
+                # print(f"Snippet: {response.text[:500]}") # Uncomment if desperate
+                return 0
 
         elif "freewebnovel" in url:
             chapters = tree.xpath('//div[@class="m-newest2"]//ul//li')
@@ -50,7 +59,7 @@ def get_chapter_count(url):
 
         return 0
     except Exception as e:
-        print(f"Failed to scrape {url}: {e}")
+        print(f"!!! CRASH scraping {url}: {e}")
         return 0
 
 def get_title(url):
@@ -125,3 +134,4 @@ for novel in novels:
 
 if not found_any:
     print("No novels found in database.")
+
