@@ -157,13 +157,18 @@
                             </div>
 
                             <div class="flex gap-2 mt-4 items-center">
-                                <button class="btn btn-xs btn-outline" onclick="updateRead('${doc.id}', ${data.readChapters - 1})">-</button>
-                                <button class="btn btn-xs btn-primary" onclick="updateRead('${doc.id}', ${data.readChapters + 1})">+</button>
+                                <div class="flex items-center bg-base-300 rounded-lg p-1">
+                                    <button class="btn btn-xs btn-ghost" onclick="updateRead('${doc.id}', ${data.readChapters - 1})">-</button>
+                                    <input type="number" class="input input-xs w-16 text-center bg-transparent border-none focus:outline-none" 
+                                           value="${data.readChapters || 0}" 
+                                           onchange="updateRead('${doc.id}', this.value)">
+                                    <button class="btn btn-xs btn-ghost" onclick="updateRead('${doc.id}', ${data.readChapters + 1})">+</button>
+                                </div>
                                 <input type="number" class="input input-xs input-bordered w-20" 
                                        value="${data.milestone || 10}" 
                                        onchange="updateMilestone('${doc.id}', this.value)" 
                                        title="Notify me when this many new chapters accumulate">
-                                <span class="text-xs text-gray-500">Milestone</span>
+                                <button class="btn btn-xs btn-error btn-outline" onclick="deleteNovel('${doc.id}')">Delete</button>
                             </div>
                         </div>
                     </div>
@@ -237,6 +242,11 @@
         }
         function updateMilestone(docId, val) {
             db.collection('users').doc(currentUser.uid).collection('novels').doc(docId).update({ milestone: parseInt(val) });
+        }
+        async function deleteNovel(docId) {
+            if (confirm("Are you sure you want to remove this novel from your list?")) {
+                await db.collection('users').doc(currentUser.uid).collection('novels').doc(docId).delete();
+            }
         }
     </script>
 </body>
