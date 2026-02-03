@@ -21,8 +21,8 @@ scraper = cloudscraper.create_scraper(browser='chrome')
 
 def get_chapter_count(url):
     try:
-        print(f"Scraping: {url}")
-        response = scraper.get(url, timeout=10)
+        # print(f"Scraping: {url}")  <-- Removed to keep logs clean
+        response = scraper.get(url, timeout=15)
         tree = html.fromstring(response.content)
         
         if "novelbin" in url:
@@ -80,24 +80,13 @@ def send_email(to_email, novel_title, count):
             "chapter_count": str(count)
         }
     }
-    
     try:
-        response = requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
-        
-        # --- NEW DEBUGGING CODE ---
-        if response.status_code == 200:
-            print(f"   -> Email sent successfully to {to_email}")
-        else:
-            print(f"   -> EMAIL FAILED! Status: {response.status_code}")
-            print(f"   -> Server Message: {response.text}")
-        # --------------------------
-        
+        requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
+        print(f"   -> Email sent to {to_email}")
     except Exception as e:
-        print(f"   -> Connection failed: {e}")
+        print(f"   -> Email failed: {e}")
 
-# --- MAIN LOGIC (UPDATED) ---
-# We use collection_group to find ALL 'novels' collections, 
-# regardless of whether the parent User document exists.
+# --- MAIN LOGIC ---
 novels = db.collection_group('novels').stream()
 
 found_any = False
@@ -108,14 +97,19 @@ for novel in novels:
     
     # 1. Fetch Real Count
     real_total = get_chapter_count(url)
+    current_title = data.get('title', 'Unknown Title')
     
     if real_total > 0:
+        print(f"Checked: {current_title[:20]}... | Found: {real_total} Chapters")
+        
         updates = {}
         updates['totalChapters'] = real_total
         
         # 2. Fix Title if missing
-        if data.get('title') == "Pending Sync...":
-            updates['title'] = get_title(url)
+        if current_title == "Pending Sync..." or current_title == "Unknown Title":
+            new_title = get_title(url)
+            updates['title'] = new_title
+            current_title = new_title # Update local var for email
         
         # 3. Apply Update
         novel.reference.update(updates)
@@ -126,9 +120,8 @@ for novel in novels:
         unread = real_total - current_read
         
         if unread >= milestone and data.get('email'):
-            print(f"Milestone reached ({unread} unread) for {updates.get('title', 'Novel')}")
-            send_email(data.get('email'), updates.get('title', 'Novel'), unread)
+            print(f"   -> Milestone Reached! ({unread} new chapters)")
+            send_email(data.get('email'), current_title, unread)
 
 if not found_any:
-    print("No novels found in database. (If you just added one, wait 30s)")
-
+    print("No novels found in database.")
