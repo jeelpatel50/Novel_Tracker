@@ -52,6 +52,7 @@
         </div>
     </div>
 
+    <!-- Single Add Modal -->
     <dialog id="my_modal_1" class="modal">
         <form method="dialog" class="modal-box">
             <h3 class="font-bold text-lg">Add Novels</h3>
@@ -62,7 +63,24 @@
                 <p class="text-xs text-gray-500">Note: The sync bot will update the total chapter count automatically.</p>
             </div>
             <div class="modal-action">
+                <button class="btn btn-outline btn-sm" type="button" onclick="my_modal_1.close(); my_modal_batch.showModal()">Switch to Batch</button>
                 <button class="btn" onclick="addNovels()">Import</button>
+                <button class="btn btn-ghost">Close</button>
+            </div>
+        </form>
+    </dialog>
+
+    <!-- Batch Add Modal -->
+    <dialog id="my_modal_batch" class="modal">
+        <form method="dialog" class="modal-box">
+            <h3 class="font-bold text-lg">Batch Import</h3>
+            <div class="py-4 space-y-4">
+                <p class="text-sm opacity-70">Paste one URL per line:</p>
+                <textarea id="batchUrls" class="textarea textarea-bordered w-full h-40" placeholder="https://novelbin.com/novel/shadow-slave&#10;https://novelbin.com/novel/the-beginning-after-the-end"></textarea>
+            </div>
+            <div class="modal-action">
+                <button class="btn btn-outline btn-sm" type="button" onclick="my_modal_batch.close(); my_modal_1.showModal()">Back to Single</button>
+                <button class="btn btn-success" onclick="batchAddNovels()">Import All</button>
                 <button class="btn btn-ghost">Close</button>
             </div>
         </form>
@@ -184,6 +202,34 @@
             document.getElementById('initialRead').value = '';
             document.getElementById('my_modal_1').close();
             alert("Novel added!");
+        }
+
+        async function batchAddNovels() {
+            if (!currentUser) return alert("Please login first");
+            const textArea = document.getElementById('batchUrls');
+            const urls = textArea.value.split('\n').map(u => u.trim()).filter(u => u !== '');
+            
+            if (urls.length === 0) return alert("No URLs found");
+
+            const batch = db.batch();
+            urls.forEach(url => {
+                let id = btoa(url).substring(0, 20);
+                const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc(id);
+                batch.set(ref, {
+                    url: url,
+                    readChapters: 0,
+                    totalChapters: 0,
+                    title: "Pending Sync...",
+                    milestone: 5,
+                    email: currentUser.email,
+                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            });
+
+            await batch.commit();
+            textArea.value = '';
+            document.getElementById('my_modal_batch').close();
+            alert(`Imported ${urls.length} novels!`);
         }
 
         function updateRead(docId, val) {
