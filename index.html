@@ -242,65 +242,65 @@
         }
 
         // --- 4. BATCH IMPORT ---
-        async function addNovels() {
-            if(isDemo) return alert("Demo Mode: Cannot save to database.");
-            if (!currentUser) return alert("Please login first");
-            
-            const name = document.getElementById('novelName').value.trim();
-            const url = document.getElementById('novelUrl').value.trim();
-            const read = parseInt(document.getElementById('initialRead').value) || 0;
-            
-            if (!url) return alert("Please provide a URL");
+       async function addNovels() {
+    if(isDemo) return alert("Demo Mode: Cannot save to database.");
+    if (!currentUser) return alert("Please login first");
+    
+    const name = document.getElementById('novelName').value.trim();
+    const url = document.getElementById('novelUrl').value.trim();
+    const read = parseInt(document.getElementById('initialRead').value) || 0;
+    
+    if (!url) return alert("Please provide a URL");
 
-            let id = btoa(url).substring(0, 20); 
-            const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc(id);
-            
-            await ref.set({
-                url: url,
-                readChapters: read,
-                totalChapters: read, 
-                title: name || "Pending Sync...", 
-                milestone: 5,
-                email: currentUser.email,
-                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
+    // FIX: Use .add() instead of .doc(id).set()
+    // This creates a RANDOM unique ID every time, preventing overwrites.
+    await db.collection('users').doc(currentUser.uid).collection('novels').add({
+        url: url,
+        readChapters: read,
+        totalChapters: read, 
+        title: name || "Pending Sync...", 
+        milestone: 5,
+        email: currentUser.email,
+        lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+    });
 
-            document.getElementById('novelName').value = '';
-            document.getElementById('novelUrl').value = '';
-            document.getElementById('initialRead').value = '';
-            document.getElementById('my_modal_1').close();
-            alert("Novel added!");
-        }
+    document.getElementById('novelName').value = '';
+    document.getElementById('novelUrl').value = '';
+    document.getElementById('initialRead').value = '';
+    document.getElementById('my_modal_1').close();
+    alert("Novel added!");
+}
 
         async function batchAddNovels() {
-            if(isDemo) return alert("Demo Mode: Cannot save to database.");
-            if (!currentUser) return alert("Please login first");
+    if(isDemo) return alert("Demo Mode: Cannot save to database.");
+    if (!currentUser) return alert("Please login first");
 
-            const textArea = document.getElementById('batchUrls');
-            const urls = textArea.value.split('\n').map(u => u.trim()).filter(u => u !== '');
-            
-            if (urls.length === 0) return alert("No URLs found");
+    const textArea = document.getElementById('batchUrls');
+    const urls = textArea.value.split('\n').map(u => u.trim()).filter(u => u !== '');
+    
+    if (urls.length === 0) return alert("No URLs found");
 
-            const batch = db.batch();
-            urls.forEach(url => {
-                let id = btoa(url).substring(0, 20);
-                const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc(id);
-                batch.set(ref, {
-                    url: url,
-                    readChapters: 0,
-                    totalChapters: 0,
-                    title: "Pending Sync...",
-                    milestone: 5,
-                    email: currentUser.email,
-                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            });
+    const batch = db.batch();
+    urls.forEach(url => {
+        // FIX: Create a reference with an Auto-ID
+        const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc();
+        
+        batch.set(ref, {
+            url: url,
+            readChapters: 0,
+            totalChapters: 0,
+            title: "Pending Sync...",
+            milestone: 5,
+            email: currentUser.email,
+            lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
+        });
+    });
 
-            await batch.commit();
-            textArea.value = '';
-            document.getElementById('my_modal_batch').close();
-            alert(`Imported ${urls.length} novels!`);
-        }
+    await batch.commit();
+    textArea.value = '';
+    document.getElementById('my_modal_batch').close();
+    alert(`Imported ${urls.length} novels!`);
+}
 
         function updateRead(docId, val) {
             if(isDemo) {
@@ -366,3 +366,4 @@
     </script>
 </body>
 </html>
+
