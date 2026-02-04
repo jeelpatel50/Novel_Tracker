@@ -27,6 +27,7 @@
             <div id="userInfo" class="hidden flex items-center gap-2">
                 <span id="userName" class="text-sm font-bold"></span>
                 <img id="userImg" class="w-8 h-8 rounded-full">
+                <button class="btn btn-ghost btn-sm" onclick="logout()">Sign Out</button>
             </div>
         </div>
     </div>
@@ -127,6 +128,14 @@
             if(isDemo) location.reload(); // Refresh to exit demo
             const provider = new firebase.auth.GoogleAuthProvider();
             auth.signInWithPopup(provider);
+        }
+
+        function logout() {
+            auth.signOut().then(() => {
+                window.location.reload();
+            }).catch((error) => {
+                console.error("Sign out error:", error);
+            });
         }
 
         // --- DEMO MODE LOGIC ---
