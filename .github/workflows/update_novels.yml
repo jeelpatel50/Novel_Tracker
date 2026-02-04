@@ -1,7 +1,7 @@
 name: Update Novel Chapters
 on:
   schedule:
-    - cron: '*/05 * * * *' # Runs every 6 hours
+    - cron: '0 0 * * *' # Runs every 12 hours
   workflow_dispatch: # Allows manual button click
 
 jobs:
