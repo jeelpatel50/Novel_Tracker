@@ -19,11 +19,17 @@ except Exception as e:
     print(f"Auth Error: {e}")
     exit(1)
 
-# --- BROWSER SETUP ---
+# --- BROWSER SETUP (MAXIMUM STEALTH) ---
+# We use a specific User-Agent to look exactly like a real Chrome browser
 scraper = cloudscraper.create_scraper(
     browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False},
     delay=10
 )
+scraper.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.5'
+})
 scraper.cookies.update({
     'content_warning': '1', 
     'cookieconsent_status': 'dismiss',
@@ -32,50 +38,58 @@ scraper.cookies.update({
 
 def get_chapter_count(url):
     try:
-        time.sleep(random.uniform(2, 4)) # Be polite
+        time.sleep(random.uniform(2, 4)) # Polite delay
         response = scraper.get(url, timeout=30)
         tree = html.fromstring(response.content)
         
-        # --- STRATEGY 1: NOVELBIN AJAX (THE FIX) ---
-        if "novelbin" in url:
-            # 1. We need the internal "novel-id" hidden in the HTML
-            # It's usually in a div like <div id="rating" data-novel-id="12345">
+        # --- 1. NOVELBIN & READNOVELFULL (AJAX METHOD) ---
+        # Both sites use the same engine. We find the secret ID and ask for the full list.
+        if "novelbin" in url or "readnovelfull" in url:
+            # Try to find the hidden ID
             novel_id = tree.xpath('//div[@data-novel-id]/@data-novel-id')
             
             if novel_id:
-                # 2. Ask the server for the FULL chapter list
-                ajax_url = f"https://novelbin.me/ajax/chapter-archive?novelId={novel_id[0]}"
-                # print(f"   > Found Secret ID: {novel_id[0]}, checking Archive...")
+                # Construct the hidden Archive URL
+                # Note: novelbin uses .me, readnovelfull uses .com. We parse the domain dynamically.
+                domain = url.split('/')[2] # e.g. "readnovelfull.com"
+                ajax_url = f"https://{domain}/ajax/chapter-archive?novelId={novel_id[0]}"
                 
+                # print(f"   > Found Secret ID: {novel_id[0]} on {domain}, checking Archive...")
                 ajax_response = scraper.get(ajax_url)
                 ajax_tree = html.fromstring(ajax_response.content)
                 
-                # 3. Count the chapters in this full list
                 chapters = ajax_tree.xpath('//li')
                 if chapters:
                     return len(chapters)
             
-            # Fallback (Old way)
-            chapters = tree.xpath('//ul[@class="list-chapter"]//li//a/text()')
-            if chapters:
-                last_chap = chapters[0]
-                nums = re.findall(r'\d+', last_chap)
-                if nums: return int(nums[0])
+            # Fallback 1: Check "Latest Chapter" link text (ReadNovelFull often puts latest at top)
+            latest_text = tree.xpath('//ul[@class="list-chapter"]//li[1]//a/text()')
+            if latest_text:
+                nums = re.findall(r'\d+', latest_text[0])
+                if nums: return int(nums[-1])
+
+            # Fallback 2: Count visible items (Will be 50 max, but better than 0)
+            chapters = tree.xpath('//ul[@class="list-chapter"]//li')
             return len(chapters)
 
-        # --- SCRIBBLEHUB STRATEGY ---
+        # --- 2. SCRIBBLEHUB STRATEGY ---
         elif "scribblehub" in url:
+            # Method A: The badge
             count_text = tree.xpath('//span[contains(@class, "cnt_chapter")]/text()')
             if count_text:
                 return int(count_text[0].replace('(', '').replace(')', ''))
             
+            # Method B: Table count
             toc_items = tree.xpath('//table[contains(@class, "toc_ol")]//tr') 
             if toc_items: return len(toc_items)
+            
+            # Debugging
+            if "Just a moment" in response.text:
+                print(f"   !!! Blocked by Cloudflare: {url}")
             return 0
 
-        # --- FREEWEBNOVEL STRATEGY ---
+        # --- 3. FREEWEBNOVEL STRATEGY ---
         elif "freewebnovel" in url:
-            # Read header text "Latest Chapter: 1234"
             latest_text = tree.xpath('//span[contains(@class, "s-last")]/a/text()')
             if not latest_text:
                  latest_text = tree.xpath('//div[@class="m-newest2"]//span[@class="tit"]/text()')
@@ -84,13 +98,8 @@ def get_chapter_count(url):
                 nums = re.findall(r'\d+', latest_text[0])
                 if nums: return int(nums[-1])
             
-            # Fallback
             chapters = tree.xpath('//div[@class="m-newest2"]//ul//li')
             if not chapters: chapters = tree.xpath('//div[@id="chapterlist"]//p')
-            return len(chapters)
-
-        elif "readnovelfull" in url:
-            chapters = tree.xpath('//ul[@class="list-chapter"]//li')
             return len(chapters)
 
         return 0
@@ -123,30 +132,23 @@ def send_email(to_email, novel_title, count):
             "chapter_count": str(count)
         }
     }
-    
     try:
-        response = requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
-        if response.status_code == 200:
-            print(f"   -> Email sent successfully to {to_email}")
-        else:
-            print(f"   -> EMAIL FAILED! Status: {response.status_code}")
-            print(f"   -> Server Message: {response.text}")
-    except Exception as e:
-        print(f"   -> Connection failed: {e}")
+        requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
+        # print(f"   -> Email sent to {to_email}") 
+    except:
+        pass
 
 # --- MAIN LOGIC ---
 novels = db.collection_group('novels').stream()
 
-# 1. Fetch ALL users to check their pause settings
-# (We need to know who paused emails)
+# Get Paused Users
 paused_users = []
 try:
     all_users = db.collection('users').stream()
     for u in all_users:
         if u.to_dict().get('notificationsPaused') == True:
             paused_users.append(u.id)
-except:
-    pass # If user collection read fails, default to sending emails
+except: pass
 
 found_any = False
 for novel in novels:
@@ -179,21 +181,16 @@ for novel in novels:
         
         novel.reference.update(updates)
         
-        # --- NOTIFICATION LOGIC ---
-        current_read = data.get('readChapters', 0)
-        milestone = data.get('milestone', 5)
-        unread = real_total - current_read
-        
-        # Check if this user paused emails
+        # Check Pause Logic
         user_id = novel.reference.parent.parent.id
         is_paused = user_id in paused_users
+        
+        unread = real_total - data.get('readChapters', 0)
+        milestone = data.get('milestone', 5)
 
-        if unread >= milestone and data.get('email'):
-            if is_paused:
-                print(f"   -> Milestone Reached ({unread}), but emails are PAUSED for this user.")
-            else:
-                print(f"   -> Milestone Reached! ({unread} new chapters)")
-                send_email(data.get('email'), current_title, unread)
+        if unread >= milestone and data.get('email') and not is_paused:
+            print(f"   -> Milestone Reached! ({unread} new chapters)")
+            send_email(data.get('email'), current_title, unread)
 
 if not found_any:
     print("No novels found in database.")
