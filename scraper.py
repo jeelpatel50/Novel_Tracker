@@ -19,12 +19,11 @@ except Exception as e:
     print(f"Auth Error: {e}")
     exit(1)
 
-# --- BROWSER SETUP (MAXIMUM STEALTH) ---
+# --- BROWSER SETUP ---
 scraper = cloudscraper.create_scraper(
     browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False},
     delay=10
 )
-# Cookies to bypass 18+ checks and popups
 scraper.cookies.update({
     'content_warning': '1', 
     'cookieconsent_status': 'dismiss',
@@ -33,18 +32,30 @@ scraper.cookies.update({
 
 def get_chapter_count(url):
     try:
-        # Polite Delay: Wait 2-4 seconds so we don't look like a spam bot
-        time.sleep(random.uniform(2, 4))
-        
+        time.sleep(random.uniform(2, 4)) # Be polite
         response = scraper.get(url, timeout=30)
         tree = html.fromstring(response.content)
         
-        # --- DEBUG: CHECK PAGE TITLE ---
-        page_title = tree.xpath('//title/text()')
-        page_title_text = page_title[0] if page_title else "No Title Found"
-        # print(f"   > Page Loaded: '{page_title_text}'") 
-
+        # --- STRATEGY 1: NOVELBIN AJAX (THE FIX) ---
         if "novelbin" in url:
+            # 1. We need the internal "novel-id" hidden in the HTML
+            # It's usually in a div like <div id="rating" data-novel-id="12345">
+            novel_id = tree.xpath('//div[@data-novel-id]/@data-novel-id')
+            
+            if novel_id:
+                # 2. Ask the server for the FULL chapter list
+                ajax_url = f"https://novelbin.me/ajax/chapter-archive?novelId={novel_id[0]}"
+                # print(f"   > Found Secret ID: {novel_id[0]}, checking Archive...")
+                
+                ajax_response = scraper.get(ajax_url)
+                ajax_tree = html.fromstring(ajax_response.content)
+                
+                # 3. Count the chapters in this full list
+                chapters = ajax_tree.xpath('//li')
+                if chapters:
+                    return len(chapters)
+            
+            # Fallback (Old way)
             chapters = tree.xpath('//ul[@class="list-chapter"]//li//a/text()')
             if chapters:
                 last_chap = chapters[0]
@@ -52,39 +63,30 @@ def get_chapter_count(url):
                 if nums: return int(nums[0])
             return len(chapters)
 
+        # --- SCRIBBLEHUB STRATEGY ---
         elif "scribblehub" in url:
-            # Method 1: Specific count badge
             count_text = tree.xpath('//span[contains(@class, "cnt_chapter")]/text()')
             if count_text:
                 return int(count_text[0].replace('(', '').replace(')', ''))
             
-            # Method 2: Count Table rows
             toc_items = tree.xpath('//table[contains(@class, "toc_ol")]//tr') 
-            if toc_items:
-                return len(toc_items)
-            
-            # Debugging
-            if "Just a moment" in response.text:
-                print(f"   !!! Blocked by Cloudflare: {url}")
+            if toc_items: return len(toc_items)
             return 0
 
+        # --- FREEWEBNOVEL STRATEGY ---
         elif "freewebnovel" in url:
-            # STRATEGY 1: Read the "Latest Chapter" Text (Best for 30+ chapters)
-            # Usually looks like "Latest Chapter: Chapter 1234" in the header
-            latest_text = tree.xpath('//span[contains(@class, "s-last")]/a/text()') # Common selector
+            # Read header text "Latest Chapter: 1234"
+            latest_text = tree.xpath('//span[contains(@class, "s-last")]/a/text()')
             if not latest_text:
                  latest_text = tree.xpath('//div[@class="m-newest2"]//span[@class="tit"]/text()')
 
             if latest_text:
-                # Extract the biggest number found in that text
                 nums = re.findall(r'\d+', latest_text[0])
-                if nums:
-                    return int(nums[-1]) # Return the last number (usually the chapter ID)
-
-            # STRATEGY 2: Count the list (Fallback)
+                if nums: return int(nums[-1])
+            
+            # Fallback
             chapters = tree.xpath('//div[@class="m-newest2"]//ul//li')
-            if not chapters:
-                chapters = tree.xpath('//div[@id="chapterlist"]//p')
+            if not chapters: chapters = tree.xpath('//div[@id="chapterlist"]//p')
             return len(chapters)
 
         elif "readnovelfull" in url:
@@ -101,11 +103,9 @@ def get_title(url):
         response = scraper.get(url)
         tree = html.fromstring(response.content)
         title = tree.xpath('//title/text()')
-        if title:
-            return title[0].split('|')[0].split('-')[0].strip()
+        if title: return title[0].split('|')[0].split('-')[0].strip()
         return url
-    except:
-        return url
+    except: return url
 
 def send_email(to_email, novel_title, count):
     if not os.environ.get('EMAILJS_PRIVATE_KEY'):
@@ -136,6 +136,17 @@ def send_email(to_email, novel_title, count):
 
 # --- MAIN LOGIC ---
 novels = db.collection_group('novels').stream()
+
+# 1. Fetch ALL users to check their pause settings
+# (We need to know who paused emails)
+paused_users = []
+try:
+    all_users = db.collection('users').stream()
+    for u in all_users:
+        if u.to_dict().get('notificationsPaused') == True:
+            paused_users.append(u.id)
+except:
+    pass # If user collection read fails, default to sending emails
 
 found_any = False
 for novel in novels:
@@ -168,13 +179,21 @@ for novel in novels:
         
         novel.reference.update(updates)
         
+        # --- NOTIFICATION LOGIC ---
         current_read = data.get('readChapters', 0)
         milestone = data.get('milestone', 5)
         unread = real_total - current_read
         
+        # Check if this user paused emails
+        user_id = novel.reference.parent.parent.id
+        is_paused = user_id in paused_users
+
         if unread >= milestone and data.get('email'):
-            print(f"   -> Milestone Reached! ({unread} new chapters)")
-            send_email(data.get('email'), current_title, unread)
+            if is_paused:
+                print(f"   -> Milestone Reached ({unread}), but emails are PAUSED for this user.")
+            else:
+                print(f"   -> Milestone Reached! ({unread} new chapters)")
+                send_email(data.get('email'), current_title, unread)
 
 if not found_any:
     print("No novels found in database.")
