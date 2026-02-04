@@ -20,94 +20,100 @@ except Exception as e:
     exit(1)
 
 # --- BROWSER SETUP ---
-# We use a specific User-Agent to look exactly like a real Chrome browser
 scraper = cloudscraper.create_scraper(
     browser={'browser': 'chrome', 'platform': 'windows', 'mobile': False},
     delay=10
 )
+# Standard Headers
 scraper.headers.update({
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
 })
-scraper.cookies.update({
-    'content_warning': '1', 
-    'cookieconsent_status': 'dismiss',
-    'sh_session': 'true'
-})
+
+def get_scribblehub_chapters(url):
+    """
+    Special function to handle ScribbleHub's strict blocking.
+    Tries 1. RSS Direct -> 2. RSS via Proxy -> 3. Main Page via Proxy
+    """
+    sid_match = re.search(r'/series/(\d+)/', url)
+    if not sid_match: return 0
+    sid = sid_match.group(1)
+    
+    rss_url = f"https://www.scribblehub.com/rssfeed.php?type=series&sid={sid}"
+    
+    # ATTEMPT 1: Direct Connection (Will likely fail on GitHub)
+    try:
+        # print("   > Attempting Direct RSS...")
+        resp = scraper.get(rss_url, timeout=10)
+        if resp.status_code == 200 and "blocked" not in resp.text.lower():
+            return parse_rss(resp.content)
+    except: pass
+
+    # ATTEMPT 2: Public Proxy (The Bypass)
+    # We use corsproxy.io to hide our GitHub IP address
+    try:
+        # print("   > Attempting Proxy RSS (Bypassing IP Block)...")
+        proxy_url = f"https://corsproxy.io/?{rss_url}"
+        resp = requests.get(proxy_url, timeout=15)
+        if resp.status_code == 200:
+            return parse_rss(resp.content)
+    except: pass
+
+    # ATTEMPT 3: Alternative Proxy (CodeTabs)
+    try:
+        proxy_url = f"https://api.codetabs.com/v1/proxy?quest={rss_url}"
+        resp = requests.get(proxy_url, timeout=15)
+        if resp.status_code == 200:
+            return parse_rss(resp.content)
+    except: pass
+    
+    print(f"   !!! All methods failed for ScribbleHub. IP is banned.")
+    return 0
+
+def parse_rss(content):
+    try:
+        root = etree.fromstring(content)
+        titles = root.xpath('//item/title/text()')
+        highest_num = 0
+        for title in titles:
+            nums = re.findall(r'\d+', title)
+            if nums:
+                for num in nums:
+                    if int(num) > highest_num and int(num) < 99999:
+                        highest_num = int(num)
+        return highest_num
+    except:
+        return 0
 
 def get_chapter_count(url):
     try:
-        time.sleep(random.uniform(2, 4)) # Polite delay
+        time.sleep(random.uniform(2, 4))
         
-        # --- 1. SCRIBBLEHUB (RSS STRATEGY - THE FIX) ---
+        # --- SCRIBBLEHUB STRATEGY ---
         if "scribblehub.com" in url:
-            # Step 1: Extract the Series ID from the URL
-            # URL format: https://www.scribblehub.com/series/12345/novel-name/
-            # We need "12345"
-            try:
-                sid_match = re.search(r'/series/(\d+)/', url)
-                if sid_match:
-                    sid = sid_match.group(1)
-                    # Step 2: Hit the Secret RSS Feed
-                    rss_url = f"https://www.scribblehub.com/rssfeed.php?type=series&sid={sid}"
-                    # print(f"   > Checking ScribbleHub RSS: {rss_url}")
-                    
-                    rss_response = scraper.get(rss_url, timeout=30)
-                    
-                    # Step 3: Parse the XML to find the latest chapter title
-                    # The feed has items like <title>Chapter 145: The End</title>
-                    # We just need the biggest number from the first few items.
-                    if rss_response.status_code == 200:
-                        root = etree.fromstring(rss_response.content)
-                        # Get all titles from the feed
-                        titles = root.xpath('//item/title/text()')
-                        
-                        highest_num = 0
-                        for title in titles:
-                            # Look for numbers in the title
-                            nums = re.findall(r'\d+', title)
-                            if nums:
-                                # Start from the right (usually the chapter number is at the start, but sometimes "Chapter 5 part 2")
-                                # We assume the first distinct number is the chapter, but let's be safe and check all.
-                                for num in nums:
-                                    if int(num) > highest_num and int(num) < 99999: # Sanity check
-                                        highest_num = int(num)
-                        
-                        if highest_num > 0:
-                            return highest_num
-            except Exception as e:
-                print(f"   ! RSS Method failed for ScribbleHub: {e}")
+            return get_scribblehub_chapters(url)
 
-            # Fallback to standard scraping if RSS fails
-            response = scraper.get(url, timeout=30)
-            tree = html.fromstring(response.content)
-            count_text = tree.xpath('//span[contains(@class, "cnt_chapter")]/text()')
-            if count_text: return int(count_text[0].replace('(', '').replace(')', ''))
-            return 0
-
-        # --- 2. NOVELBIN & READNOVELFULL (AJAX STRATEGY) ---
+        # --- NOVELBIN & READNOVELFULL ---
         elif "novelbin" in url or "readnovelfull" in url:
             response = scraper.get(url, timeout=30)
             tree = html.fromstring(response.content)
             
-            # Find the secret ID
             novel_id = tree.xpath('//div[@data-novel-id]/@data-novel-id')
             if novel_id:
-                domain = url.split('/')[2] 
+                domain = url.split('/')[2]
                 ajax_url = f"https://{domain}/ajax/chapter-archive?novelId={novel_id[0]}"
+                # Proxies usually aren't needed for NovelBin, but if it fails, we could add them here too.
                 ajax_response = scraper.get(ajax_url)
-                ajax_tree = html.fromstring(ajax_response.content)
-                chapters = ajax_tree.xpath('//li')
+                chapters = html.fromstring(ajax_response.content).xpath('//li')
                 if chapters: return len(chapters)
             
-            # Fallbacks
+            # Fallback
             latest_text = tree.xpath('//ul[@class="list-chapter"]//li[1]//a/text()')
             if latest_text:
                 nums = re.findall(r'\d+', latest_text[0])
                 if nums: return int(nums[-1])
-            chapters = tree.xpath('//ul[@class="list-chapter"]//li')
-            return len(chapters)
+            return len(tree.xpath('//ul[@class="list-chapter"]//li'))
 
-        # --- 3. FREEWEBNOVEL STRATEGY ---
+        # --- FREEWEBNOVEL ---
         elif "freewebnovel" in url:
             response = scraper.get(url, timeout=30)
             tree = html.fromstring(response.content)
@@ -131,6 +137,7 @@ def get_chapter_count(url):
 
 def get_title(url):
     try:
+        # For title, we don't use proxy (less critical if it fails once)
         response = scraper.get(url)
         tree = html.fromstring(response.content)
         title = tree.xpath('//title/text()')
