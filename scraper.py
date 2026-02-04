@@ -139,4 +139,76 @@ def get_title(url):
     except: return url
 
 def send_email(to_email, novel_title, count):
-    if
+    if not os.environ.get('EMAILJS_PRIVATE_KEY'):
+        print("Skipping email: No API Key found.")
+        return
+
+    data = {
+        "service_id": os.environ['EMAILJS_SERVICE_ID'],
+        "template_id": os.environ['EMAILJS_TEMPLATE_ID'],
+        "user_id": os.environ['EMAILJS_PUBLIC_KEY'],
+        "accessToken": os.environ['EMAILJS_PRIVATE_KEY'],
+        "template_params": {
+            "to_email": to_email,
+            "novel_name": novel_title,
+            "chapter_count": str(count)
+        }
+    }
+    try:
+        requests.post("https://api.emailjs.com/api/v1.0/email/send", json=data)
+    except: pass
+
+# --- MAIN LOGIC ---
+novels = db.collection_group('novels').stream()
+
+paused_users = []
+try:
+    all_users = db.collection('users').stream()
+    for u in all_users:
+        if u.to_dict().get('notificationsPaused') == True:
+            paused_users.append(u.id)
+except: pass
+
+found_any = False
+for novel in novels:
+    found_any = True
+    data = novel.to_dict()
+    url = data.get('url')
+
+    # --- AUTO-FIX BAD LINKS ---
+    if "scribblehub.com" in url:
+        clean_url = url.split("/glossary/")[0].split("/stats/")[0].split("/chapter/")[0]
+        if clean_url != url:
+            print(f"   * Auto-fixing bad link: {url} -> {clean_url}")
+            url = clean_url
+            novel.reference.update({'url': url})
+    # --------------------------
+    
+    real_total = get_chapter_count(url)
+    current_title = data.get('title', 'Unknown Title')
+    
+    if real_total > 0:
+        print(f"Checked: {current_title[:20]}... | Found: {real_total} Chapters")
+        
+        updates = {}
+        updates['totalChapters'] = real_total
+        
+        if current_title == "Pending Sync..." or current_title == "Unknown Title":
+            new_title = get_title(url)
+            updates['title'] = new_title
+            current_title = new_title
+        
+        novel.reference.update(updates)
+        
+        user_id = novel.reference.parent.parent.id
+        is_paused = user_id in paused_users
+        
+        unread = real_total - data.get('readChapters', 0)
+        milestone = data.get('milestone', 5)
+
+        if unread >= milestone and data.get('email') and not is_paused:
+            print(f"   -> Milestone Reached! ({unread} new chapters)")
+            send_email(data.get('email'), current_title, unread)
+
+if not found_any:
+    print("No novels found in database.")
