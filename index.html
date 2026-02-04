@@ -19,12 +19,12 @@
         
         <div class="flex-none gap-2">
             <div id="authButtons" class="flex gap-2">
-                <button class="btn btn-outline btn-sm" onclick="enterDemoMode()">Try Demo</button>
+                <button class="btn btn-outline btn-sm" onclick="enterDemoMode()">Demo Mode</button>
                 <button id="loginBtn" class="btn btn-primary btn-sm" onclick="login()">Sync / Login</button>
             </div>
             
             <div id="userInfo" class="hidden flex items-center gap-2">
-                <span id="demoBadge" class="badge badge-warning hidden">DEMO MODE</span>
+                <span id="demoBadge" class="badge badge-warning hidden">DEMO</span>
                 <img id="userImg" src="" class="w-8 h-8 rounded-full border border-primary">
                 <button class="btn btn-xs btn-ghost text-error" onclick="logout()">Logout</button>
             </div>
@@ -45,14 +45,14 @@
                 </div>
             </div>
 
-            <div class="form-control bg-base-200 p-4 rounded-xl shadow">
+            <div class="form-control bg-base-200 p-2 rounded-xl shadow">
                 <label class="cursor-pointer label">
                     <span class="label-text font-bold flex items-center gap-2">
                         <i class="fas fa-envelope"></i> Email Notifications
                     </span> 
-                    <input type="checkbox" id="emailToggle" class="toggle toggle-success" onchange="toggleEmail(this.checked)" />
+                    <input type="checkbox" id="emailToggle" class="toggle toggle-success toggle-sm" onchange="toggleEmail(this.checked)" />
                 </label>
-                <div class="text-xs text-gray-500 mt-1 pl-1" id="emailStatusText">
+                <div class="text-xs text-gray-500 pl-1" id="emailStatusText">
                     (Login to configure settings)
                 </div>
             </div>
@@ -60,14 +60,12 @@
 
         <div class="join w-full mb-8 shadow-lg">
             <input id="novelUrl" class="input input-bordered join-item w-full" placeholder="Paste Novel Link (ScribbleHub, NovelBin, etc...)" />
-            <button class="btn btn-primary join-item" onclick="addNovel()">
-                <i class="fas fa-plus"></i> Import
-            </button>
+            <button class="btn btn-primary join-item" onclick="addNovel()">Import</button>
         </div>
 
         <div id="novelList" class="grid gap-4">
             <div class="text-center text-gray-500 mt-10">
-                Please login or try Demo Mode to view library.
+                Please login or click "Demo Mode" to view library.
             </div>
         </div>
     </div>
@@ -77,8 +75,8 @@
     <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-firestore-compat.js"></script>
 
     <script>
-        // --- 1. FIREBASE CONFIG ---
-        // REPLACE THIS WITH YOUR OWN FIREBASE CONFIG FROM CONSOLE
+        // --- CONFIGURATION ---
+        // REPLACE WITH YOUR FIREBASE CONFIG
         const firebaseConfig = {
              apiKey: "AIzaSy...", 
              authDomain: "novel-tracker-....firebaseapp.com",
@@ -92,39 +90,17 @@
         const auth = firebase.auth();
         const db = firebase.firestore();
         let currentUser = null;
-        
-        // --- DEMO MODE CONFIG ---
         let isDemo = false;
+
+        // --- DEMO DATA ---
         const demoData = [
-            {
-                id: 'demo1',
-                title: 'Creating Heavenly Laws',
-                totalChapters: 215,
-                readChapters: 215,
-                url: 'https://www.scribblehub.com/series/968530/creating-heavenly-laws/',
-                milestone: 5
-            },
-            {
-                id: 'demo2',
-                title: 'Martial God Asura',
-                totalChapters: 5600,
-                readChapters: 5400,
-                url: 'https://novelbin.me/novel/martial-god-asura',
-                milestone: 10
-            },
-            {
-                id: 'demo3',
-                title: 'Reverend Insanity',
-                totalChapters: 2334,
-                readChapters: 100,
-                url: 'https://freewebnovel.com/reverend-insanity.html',
-                milestone: 20
-            }
+            { id: 'd1', title: 'Creating Heavenly Laws', totalChapters: 215, readChapters: 215, url: 'https://www.scribblehub.com', milestone: 5 },
+            { id: 'd2', title: 'Martial God Asura', totalChapters: 5600, readChapters: 5400, url: 'https://novelbin.me', milestone: 10 }
         ];
 
-        // --- 2. AUTHENTICATION LOGIC ---
+        // --- AUTH LOGIC ---
         function login() {
-            if(isDemo) logout(); // Reset if coming from demo
+            if(isDemo) logout();
             const provider = new firebase.auth.GoogleAuthProvider();
             auth.signInWithPopup(provider).catch(alert);
         }
@@ -136,7 +112,7 @@
                 document.getElementById('demoBadge').classList.add('hidden');
                 document.getElementById('authButtons').classList.remove('hidden');
                 document.getElementById('userInfo').classList.add('hidden');
-                document.getElementById('novelList').innerHTML = `<div class="text-center p-10">Please login to sync library.</div>`;
+                document.getElementById('novelList').innerHTML = `<div class="text-center p-10">Please login.</div>`;
                 document.getElementById('totalNovels').innerText = "0";
                 document.getElementById('updatesAvailable').innerText = "0";
                 document.getElementById('emailToggle').checked = false;
@@ -148,28 +124,18 @@
 
         function enterDemoMode() {
             isDemo = true;
-            currentUser = { uid: 'demo_user', photoURL: 'https://ui-avatars.com/api/?name=Demo+User&background=random' };
-            
-            // Update UI
             document.getElementById('authButtons').classList.add('hidden');
             document.getElementById('userInfo').classList.remove('hidden');
-            document.getElementById('userImg').src = currentUser.photoURL;
             document.getElementById('demoBadge').classList.remove('hidden');
+            document.getElementById('userImg').src = "https://ui-avatars.com/api/?name=Demo+User&background=random";
             
-            // Load Fake Data
+            // Set Fake Toggle
+            document.getElementById('emailToggle').checked = true;
+            document.getElementById('emailStatusText').innerText = "Demo Mode: Emails are simulated.";
+            
             renderNovels(demoData);
             updateStats(demoData);
-            
-            // Set Fake Toggle Status
-            document.getElementById('emailToggle').checked = true;
-            updateStatusText(true);
-            
-            // Toast
-            const toast = document.createElement('div');
-            toast.className = 'alert alert-info fixed bottom-4 right-4 w-auto shadow-lg';
-            toast.innerHTML = `<span>Example data loaded. Changes won't be saved.</span>`;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
+            alert("Entered Demo Mode. Changes won't be saved!");
         }
 
         auth.onAuthStateChanged((user) => {
@@ -187,11 +153,9 @@
             }
         });
 
-        // --- 3. CORE FUNCTIONS ---
-
+        // --- APP LOGIC ---
         function loadNovels() {
-            if (isDemo) return; // Handled by enterDemoMode
-            
+            if (isDemo) return;
             db.collection('users').doc(currentUser.uid).collection('novels')
               .onSnapshot(snapshot => {
                   const novels = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()}));
@@ -202,14 +166,12 @@
 
         function loadEmailSetting() {
             if (isDemo) return;
-            
             db.collection('users').doc(currentUser.uid).get().then((doc) => {
                 if (doc.exists) {
                     const paused = doc.data().notificationsPaused || false;
                     document.getElementById('emailToggle').checked = !paused;
                     updateStatusText(!paused);
                 } else {
-                    // Default to ON if no setting exists
                     document.getElementById('emailToggle').checked = true;
                     updateStatusText(true);
                 }
@@ -217,15 +179,11 @@
         }
 
         async function addNovel() {
-            if (!currentUser) return alert("Please login first!");
-            
             const url = document.getElementById('novelUrl').value;
             if (!url) return;
+            if (isDemo) return alert("Demo Mode: Cannot save to database."); // DEMO CHECK
 
-            if (isDemo) {
-                alert("Demo Mode: Cannot add real novels to database.");
-                return;
-            }
+            if (!currentUser) return alert("Please login first!");
 
             try {
                 await db.collection('users').doc(currentUser.uid).collection('novels').add({
@@ -239,40 +197,35 @@
                 });
                 document.getElementById('novelUrl').value = '';
             } catch (error) {
-                console.error("Error adding novel: ", error);
-                alert("Error adding novel. See console.");
+                alert("Error adding novel.");
             }
         }
 
         function toggleEmail(isChecked) {
             updateStatusText(isChecked);
-            
-            if (isDemo) {
-                console.log("Demo Mode: Email setting toggled visually only.");
-                return;
-            }
+            if (isDemo) return; // DEMO CHECK
 
-            // If Checked (ON), Paused is FALSE. If Unchecked (OFF), Paused is TRUE.
-            const isPaused = !isChecked; 
-            db.collection('users').doc(currentUser.uid).set({
-                notificationsPaused: isPaused
-            }, { merge: true });
+            const isPaused = !isChecked;
+            if (currentUser) {
+                db.collection('users').doc(currentUser.uid).set({
+                    notificationsPaused: isPaused
+                }, { merge: true });
+            }
         }
 
         function updateStatusText(isOn) {
             const text = document.getElementById('emailStatusText');
             if (isOn) {
-                text.innerText = "Emails are ON. You will be notified of updates.";
-                text.className = "text-xs text-success mt-1 pl-1";
+                text.innerText = "Emails ON";
+                text.className = "text-xs text-success pl-1";
             } else {
-                text.innerText = "Emails are PAUSED. Tracker will strictly count chapters.";
-                text.className = "text-xs text-warning mt-1 pl-1";
+                text.innerText = "Emails PAUSED";
+                text.className = "text-xs text-warning pl-1";
             }
         }
 
         async function updateRead(id, change) {
-            if (isDemo) {
-                // Update local demo data for visual effect
+            if (isDemo) { // DEMO CHECK
                 const novel = demoData.find(n => n.id === id);
                 if (novel) {
                     novel.readChapters = Math.max(0, novel.readChapters + change);
@@ -289,9 +242,9 @@
         }
 
         async function deleteNovel(id) {
-            if (isDemo) {
+            if (isDemo) { // DEMO CHECK
                 const index = demoData.findIndex(n => n.id === id);
-                if (index > -1) {
+                if(index > -1) {
                     demoData.splice(index, 1);
                     renderNovels(demoData);
                     updateStats(demoData);
@@ -304,7 +257,6 @@
             }
         }
 
-        // --- 4. UI RENDERING ---
         function renderNovels(novels) {
             const container = document.getElementById('novelList');
             container.innerHTML = '';
@@ -317,11 +269,7 @@
             novels.forEach(novel => {
                 const unread = Math.max(0, novel.totalChapters - novel.readChapters);
                 const progress = novel.totalChapters > 0 ? (novel.readChapters / novel.totalChapters) * 100 : 0;
-                
-                // Color code unread count
-                let badgeColor = "badge-ghost";
-                if (unread > 0) badgeColor = "badge-accent";
-                if (unread > 20) badgeColor = "badge-error";
+                let badgeColor = unread > 0 ? "badge-accent" : "badge-ghost";
 
                 const html = `
                 <div class="card bg-base-200 shadow-xl border-l-4 ${unread > 0 ? 'border-accent' : 'border-transparent'}">
@@ -333,9 +281,6 @@
                                         ${novel.title} <i class="fas fa-external-link-alt text-xs opacity-50 ml-1"></i>
                                     </a>
                                 </h2>
-                                <div class="text-xs text-gray-500 mt-1 uppercase tracking-wide">
-                                    ${new URL(novel.url).hostname.replace('www.', '')}
-                                </div>
                             </div>
                             <div class="badge ${badgeColor} p-3 font-bold">+${unread} New</div>
                         </div>
@@ -351,7 +296,7 @@
                         <div class="card-actions justify-end mt-4 pt-4 border-t border-base-300">
                             <div class="join">
                                 <button class="btn btn-sm join-item" onclick="updateRead('${novel.id}', -1)">-1</button>
-                                <button class="btn btn-sm btn-primary join-item" onclick="updateRead('${novel.id}', 1)">Mark Read (+1)</button>
+                                <button class="btn btn-sm btn-primary join-item" onclick="updateRead('${novel.id}', 1)">Mark Read</button>
                             </div>
                             <button class="btn btn-sm btn-ghost text-error ml-2" onclick="deleteNovel('${novel.id}')">
                                 <i class="fas fa-trash"></i>
