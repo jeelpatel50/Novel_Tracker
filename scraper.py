@@ -156,14 +156,6 @@ for novel in novels:
     data = novel.to_dict()
     url = data.get('url')
 
-    # --- AUTO-FIX BAD LINKS ---
-    if "scribblehub.com" in url:
-        clean_url = url.split("/glossary/")[0].split("/stats/")[0].split("/chapter/")[0]
-        if clean_url != url:
-            print(f"   * Auto-fixing bad link: {url} -> {clean_url}")
-            url = clean_url
-            novel.reference.update({'url': url})
-    # --------------------------
     
     real_total = get_chapter_count(url)
     current_title = data.get('title', 'Unknown Title')
@@ -194,3 +186,4 @@ for novel in novels:
 
 if not found_any:
     print("No novels found in database.")
+
