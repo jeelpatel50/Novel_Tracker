@@ -1,106 +1,151 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="black">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NovelTrack</title>
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.7.3/dist/full.css" rel="stylesheet" type="text/css" />
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.4/dist/full.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        amoled: '#000000',
+                        cardbg: '#121212',
+                        neonp: '#a855f7', // Purple
+                        neonc: '#06b6d4', // Cyan
+                    }
+                }
+            }
+        }
+    </script>
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
-        .novel-card { transition: transform 0.2s; }
-        .novel-card:hover { transform: translateY(-5px); }
+        body { background-color: #000000; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        .card-amoled { background-color: #121212; border: 1px solid #333; }
+        .card-amoled:hover { border-color: #a855f7; transform: translateY(-2px); transition: all 0.2s; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #000; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        
+        .drag-handle { cursor: grab; }
+        .drag-handle:active { cursor: grabbing; }
     </style>
 </head>
-<body class="min-h-screen p-4 pb-20">
+<body class="min-h-screen p-4 pb-20 selection:bg-purple-500 selection:text-white">
 
-    <div class="navbar bg-base-100 rounded-box shadow-xl mb-6">
+    <div class="navbar bg-cardbg border-b border-gray-800 rounded-box mb-6">
         <div class="flex-1">
-            <a class="btn btn-ghost normal-case text-xl text-primary">NovelTrack</a>
+            <a class="btn btn-ghost normal-case text-xl text-transparent bg-clip-text bg-gradient-to-r from-neonp to-neonc font-bold">
+                <i class="fas fa-book-open text-white mr-2"></i> NovelTrack
+            </a>
         </div>
-        <div class="flex-none gap-2">
-            <button id="demoBtn" class="btn btn-outline btn-sm" onclick="enterDemoMode()">Demo Mode</button>
-            <button id="loginBtn" class="btn btn-primary" onclick="login()">Sync / Login</button>
-            <div id="userInfo" class="hidden flex items-center gap-2">
-                <span id="userName" class="text-sm font-bold"></span>
-                <img id="userImg" class="w-8 h-8 rounded-full">
+        
+        <div class="flex-none gap-3">
+            <div id="authButtons" class="flex gap-2">
+                <button class="btn btn-outline btn-sm btn-info" onclick="enterDemoMode()">Demo</button>
+                <button id="loginBtn" class="btn btn-primary btn-sm bg-purple-600 border-none hover:bg-purple-700" onclick="login()">Login</button>
+            </div>
+            
+            <div id="userInfo" class="hidden flex items-center gap-3 bg-gray-900 pr-4 pl-1 py-1 rounded-full border border-gray-800">
+                <img id="userImg" class="w-8 h-8 rounded-full border border-purple-500">
+                <span id="userName" class="text-xs font-bold text-gray-300 hidden md:inline"></span>
+                <button class="btn btn-xs btn-circle btn-ghost text-red-400" onclick="logout()" title="Logout">
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
             </div>
         </div>
     </div>
 
-    <div class="container mx-auto max-w-4xl">
+    <div class="container mx-auto max-w-5xl">
         
-        <div class="s shadow w-full mb-6 bg-base-200">
-            <div class="flex flex-col gap-4 mb-6 p-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="stat bg-base-200 rounded-xl shadow">
-                        <div class="stat-title text-xs">Total Novels</div>
-                        <div class="stat-value text-primary text-2xl" id="totalNovels">0</div>
-                    </div>
-                    <div class="stat bg-base-200 rounded-xl shadow">
-                        <div class="stat-title text-xs">Unread</div>
-                        <div class="stat-value text-accent text-2xl" id="updatesAvailable">0</div>
-                    </div>
+        <div class="flex flex-col md:flex-row gap-4 mb-6 justify-between items-end md:items-center bg-cardbg p-4 rounded-xl border border-gray-800">
+            
+            <div class="flex gap-6">
+                <div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider">Total</div>
+                    <div class="text-2xl font-bold text-white" id="totalNovels">0</div>
+                </div>
+                <div>
+                    <div class="text-xs text-gray-500 uppercase tracking-wider">Unread</div>
+                    <div class="text-2xl font-bold text-neonc" id="updatesAvailable">0</div>
+                </div>
+            </div>
+
+            <div class="flex flex-wrap gap-3 items-center w-full md:w-auto justify-end">
+                
+                <div class="form-control">
+                    <label class="label cursor-pointer gap-2">
+                        <span class="label-text text-xs text-gray-400">Emails</span> 
+                        <input type="checkbox" id="emailToggle" class="toggle toggle-success toggle-sm" onchange="toggleEmail(this.checked)" />
+                    </label>
                 </div>
 
-                <div class="form-control bg-base-200 p-4 rounded-xl shadow">
-                    <label class="cursor-pointer label">
-                        <span class="label-text font-bold">Email Notifications</span> 
-                        <input type="checkbox" id="emailToggle" class="toggle toggle-success" onchange="toggleEmail(this.checked)" />
-                    </label>
-                    <div class="text-xs text-gray-500 mt-1 pl-1" id="emailStatusText">
-                        (Switch off to save quota while testing)
-                    </div>
-                </div>
+                <select id="sortSelect" class="select select-bordered select-sm bg-black text-gray-300 border-gray-700" onchange="applySort()">
+                    <option value="custom">Custom (Drag)</option>
+                    <option value="updated">Recently Updated</option>
+                    <option value="unread">Most Unread</option>
+                    <option value="read">Most Read</option>
+                    <option value="az">A-Z Name</option>
+                </select>
+
+                <button class="btn btn-sm btn-primary bg-gradient-to-r from-neonp to-purple-600 border-none" onclick="my_modal_1.showModal()">
+                    <i class="fas fa-plus"></i> Add
+                </button>
             </div>
         </div>
 
-        <div class="flex justify-end mb-4">
-            <button class="btn btn-success" onclick="my_modal_1.showModal()">+ Add Novels</button>
-        </div>
-
-        <div id="novelList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="text-center w-full col-span-2 py-10 text-gray-500">Loading your library...</div>
+        <div id="novelList" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div class="text-center w-full col-span-2 py-20 text-gray-600">
+                <i class="fas fa-ghost text-4xl mb-4 opacity-50"></i><br>
+                Library is empty. Login or add novels.
+            </div>
         </div>
     </div>
 
     <dialog id="my_modal_1" class="modal">
-        <form method="dialog" class="modal-box">
-            <h3 class="font-bold text-lg">Add Novels</h3>
+        <form method="dialog" class="modal-box bg-cardbg border border-gray-700">
+            <h3 class="font-bold text-lg text-white">Add New Novel</h3>
             <div class="py-4 space-y-4">
-                <input type="text" id="novelName" class="input input-bordered w-full" placeholder="Novel Name (e.g. Shadow Slave)">
-                <input type="url" id="novelUrl" class="input input-bordered w-full" placeholder="Novel URL (NovelBin, ScribbleHub, etc.)">
-                <input type="number" id="initialRead" class="input input-bordered w-full" placeholder="Chapters already read (e.g. 150)">
-                <p class="text-xs text-gray-500">Note: The sync bot will update the total chapter count automatically.</p>
+                <input type="text" id="novelName" class="input input-bordered w-full bg-black border-gray-700" placeholder="Title (e.g. Shadow Slave)">
+                <input type="url" id="novelUrl" class="input input-bordered w-full bg-black border-gray-700" placeholder="Link (ScribbleHub, NovelBin...)">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" id="initialRead" class="input input-bordered w-full bg-black border-gray-700" placeholder="Read Count">
+                    <input type="number" id="initialMilestone" class="input input-bordered w-full bg-black border-gray-700" placeholder="Milestone (5)" value="5">
+                </div>
             </div>
             <div class="modal-action">
-                <button class="btn btn-outline btn-sm" type="button" onclick="my_modal_1.close(); my_modal_batch.showModal()">Switch to Batch</button>
-                <button class="btn" onclick="addNovels()">Import</button>
-                <button class="btn btn-ghost">Close</button>
+                <button class="btn btn-outline btn-sm" type="button" onclick="my_modal_1.close(); my_modal_batch.showModal()">Batch Import</button>
+                <button class="btn btn-primary btn-sm" onclick="addNovels()">Save</button>
+                <button class="btn btn-ghost btn-sm">Cancel</button>
             </div>
         </form>
     </dialog>
 
     <dialog id="my_modal_batch" class="modal">
-        <form method="dialog" class="modal-box">
-            <h3 class="font-bold text-lg">Batch Import</h3>
-            <div class="py-4 space-y-4">
-                <p class="text-sm opacity-70">Paste one URL per line:</p>
-                <textarea id="batchUrls" class="textarea textarea-bordered w-full h-40" placeholder="https://novelbin.com/novel/shadow-slave&#10;https://novelbin.com/novel/the-beginning-after-the-end"></textarea>
-            </div>
+        <form method="dialog" class="modal-box bg-cardbg border border-gray-700">
+            <h3 class="font-bold text-lg text-white">Batch Import</h3>
+            <p class="text-xs text-gray-500 mb-2">One URL per line</p>
+            <textarea id="batchUrls" class="textarea textarea-bordered w-full h-40 bg-black border-gray-700 font-mono text-xs"></textarea>
             <div class="modal-action">
-                <button class="btn btn-outline btn-sm" type="button" onclick="my_modal_batch.close(); my_modal_1.showModal()">Back to Single</button>
-                <button class="btn btn-success" onclick="batchAddNovels()">Import All</button>
-                <button class="btn btn-ghost">Close</button>
+                <button class="btn btn-outline btn-sm" type="button" onclick="my_modal_batch.close(); my_modal_1.showModal()">Back</button>
+                <button class="btn btn-success btn-sm" onclick="batchAddNovels()">Import All</button>
+                <button class="btn btn-ghost btn-sm">Cancel</button>
             </div>
         </form>
     </dialog>
 
     <script>
-        // --- 1. FIREBASE CONFIGURATION (RESTORED ORIGINAL) ---
+        // --- 1. FIREBASE CONFIGURATION (YOUR REAL KEYS) ---
         const firebaseConfig = {
           apiKey: "AIzaSyBMTwevULQQojD_aL0jGd5tnN1rikglMmg",
           authDomain: "novel-f85b9.firebaseapp.com",
@@ -110,82 +155,119 @@
           appId: "1:850456005043:web:dda71a0dc77cd9120063c6",
           measurementId: "G-3G9ZRSQT79"
         };
+        
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const auth = firebase.auth();
         let currentUser = null;
-
-        // --- DEMO MODE VARIABLES ---
+        let localNovels = []; // Store novels locally for sorting
         let isDemo = false;
+
+        // --- DEMO DATA ---
         const demoData = [
-            { id: 'd1', title: 'Creating Heavenly Laws', totalChapters: 215, readChapters: 215, url: 'https://www.scribblehub.com/series/968530/', milestone: 5 },
-            { id: 'd2', title: 'Martial God Asura', totalChapters: 5600, readChapters: 5400, url: 'https://novelbin.me/novel/martial-god-asura', milestone: 10 }
+            { id: 'd1', title: 'Creating Heavenly Laws', totalChapters: 215, readChapters: 200, url: 'https://www.scribblehub.com/series/968530/', milestone: 5 },
+            { id: 'd2', title: 'Martial God Asura', totalChapters: 5600, readChapters: 5400, url: 'https://novelbin.me/novel/martial-god-asura', milestone: 10 },
+            { id: 'd3', title: 'Reverend Insanity', totalChapters: 2334, readChapters: 150, url: '#', milestone: 20 },
+            { id: 'd4', title: 'Lord of Mysteries', totalChapters: 1432, readChapters: 1430, url: '#', milestone: 5 }
         ];
 
-        // --- 2. AUTHENTICATION ---
+        // --- AUTH ---
         function login() {
-            if(isDemo) location.reload(); // Refresh to exit demo
+            if(isDemo) location.reload();
             const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider);
+            auth.signInWithPopup(provider).catch(e => alert(e.message));
         }
 
-        // --- DEMO LOGIC ---
+        function logout() {
+            if(isDemo) location.reload();
+            else auth.signOut();
+        }
+
         function enterDemoMode() {
             isDemo = true;
-            document.getElementById('loginBtn').classList.add('hidden');
-            document.getElementById('demoBtn').classList.add('hidden');
-            document.getElementById('userInfo').classList.remove('hidden');
-            document.getElementById('userName').innerText = "Demo User";
-            document.getElementById('userImg').src = "https://ui-avatars.com/api/?name=Demo+User&background=random";
-            
-            // Fake the email toggle ON
+            setupUI("Demo User", "https://ui-avatars.com/api/?name=Demo&background=random");
             document.getElementById('emailToggle').checked = true;
-            updateStatusText(true);
-
-            renderNovels(demoData);
-            alert("Entered Demo Mode. Actions will not be saved.");
+            localNovels = [...demoData];
+            applySort();
+            alert("Demo Mode: Drag & Drop enabled. Changes not saved.");
         }
 
         auth.onAuthStateChanged((user) => {
             if (user) {
                 currentUser = user;
-                isDemo = false;
-                document.getElementById('loginBtn').classList.add('hidden');
-                document.getElementById('demoBtn').classList.add('hidden');
-                document.getElementById('userInfo').classList.remove('hidden');
-                document.getElementById('userName').innerText = user.displayName;
-                document.getElementById('userImg').src = user.photoURL;
+                setupUI(user.displayName, user.photoURL);
                 loadNovels();
                 loadEmailSetting();
             } else if (!isDemo) {
-                document.getElementById('novelList').innerHTML = `<div class="text-center w-full col-span-2">Please login or try Demo Mode.</div>`;
+                resetUI();
             }
         });
 
-        // --- 3. DATA HANDLING ---
+        function setupUI(name, img) {
+            document.getElementById('authButtons').classList.add('hidden');
+            document.getElementById('userInfo').classList.remove('hidden');
+            document.getElementById('userName').innerText = name;
+            document.getElementById('userImg').src = img;
+        }
+
+        function resetUI() {
+            document.getElementById('authButtons').classList.remove('hidden');
+            document.getElementById('userInfo').classList.add('hidden');
+            document.getElementById('novelList').innerHTML = `<div class="text-center w-full col-span-2 py-20 text-gray-600">Please login to sync library.</div>`;
+        }
+
+        // --- DATA LOADING & SORTING ---
         function loadNovels() {
             if(isDemo) return;
-
             db.collection('users').doc(currentUser.uid).collection('novels')
-              .orderBy('lastUpdated', 'desc')
               .onSnapshot((snapshot) => {
-                const novels = [];
-                snapshot.forEach(doc => {
-                    novels.push({ id: doc.id, ...doc.data() });
-                });
-                renderNovels(novels);
+                localNovels = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                applySort();
             });
         }
 
-        // Shared Render Function (Works for Real Data AND Demo Data)
+        function applySort() {
+            const criteria = document.getElementById('sortSelect').value;
+            
+            let sorted = [...localNovels];
+
+            if (criteria === 'updated') {
+                // Sort by Unread count as proxy for activity
+                sorted.sort((a, b) => (b.totalChapters - b.readChapters) - (a.totalChapters - a.readChapters));
+            } else if (criteria === 'unread') {
+                sorted.sort((a, b) => (b.totalChapters - b.readChapters) - (a.totalChapters - a.readChapters));
+            } else if (criteria === 'read') {
+                sorted.sort((a, b) => b.readChapters - a.readChapters);
+            } else if (criteria === 'az') {
+                sorted.sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+            } else if (criteria === 'custom') {
+                // Try to load custom order from LocalStorage
+                const savedOrder = JSON.parse(localStorage.getItem('novelOrder_' + (currentUser ? currentUser.uid : 'demo')) || '[]');
+                if(savedOrder.length > 0) {
+                    sorted.sort((a, b) => {
+                        const idxA = savedOrder.indexOf(a.id);
+                        const idxB = savedOrder.indexOf(b.id);
+                        if (idxA === -1) return 1; 
+                        if (idxB === -1) return -1;
+                        return idxA - idxB;
+                    });
+                }
+            }
+
+            renderNovels(sorted);
+        }
+
+        // --- RENDERING ---
         function renderNovels(novels) {
             const list = document.getElementById('novelList');
             list.innerHTML = '';
+            
             let total = 0;
             let updates = 0;
 
             if (novels.length === 0) {
-                 list.innerHTML = `<div class="text-center w-full col-span-2 text-gray-500">No novels tracked yet.</div>`;
+                 list.innerHTML = `<div class="text-center w-full col-span-2 text-gray-500 mt-10">No novels found.</div>`;
+                 return;
             }
 
             novels.forEach(data => {
@@ -193,94 +275,128 @@
                 const unread = (data.totalChapters || 0) - (data.readChapters || 0);
                 if(unread > 0) updates++;
 
-                const progressVal = data.totalChapters > 0 ? (data.readChapters / data.totalChapters) * 100 : 0;
+                const progress = data.totalChapters > 0 ? (data.readChapters / data.totalChapters) * 100 : 0;
+                const milestone = data.milestone || 5;
 
-                list.innerHTML += `
-                <div class="card bg-base-200 shadow-xl novel-card border-l-4 ${unread > 0 ? 'border-accent' : 'border-transparent'}">
-                    <div class="card-body p-5">
-                        <h2 class="card-title text-sm truncate">
-                            <a href="${data.url}" target="_blank" class="hover:underline text-primary">${data.title || data.url}</a>
-                            ${unread > 0 ? `<div class="badge badge-accent">+${unread} new</div>` : ''}
-                        </h2>
-                        
-                        <div class="w-full bg-gray-700 rounded-full h-2.5 mt-2">
-                            <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${progressVal}%"></div>
-                        </div>
-                        <div class="flex justify-between text-xs mt-1 text-gray-400">
-                            <span>Read: ${data.readChapters || 0}</span>
-                            <span>Total: ${data.totalChapters || '?'}</span>
-                        </div>
-
-                        <div class="flex gap-2 mt-4 items-center">
-                            <div class="flex items-center bg-base-300 rounded-lg p-1">
-                                <button class="btn btn-xs btn-ghost" onclick="updateRead('${data.id}', ${data.readChapters - 1})">-</button>
-                                <input type="number" class="input input-xs w-16 text-center bg-transparent border-none focus:outline-none" 
-                                       value="${data.readChapters || 0}" 
-                                       onchange="updateRead('${data.id}', this.value)">
-                                <button class="btn btn-xs btn-ghost" onclick="updateRead('${data.id}', ${data.readChapters + 1})">+</button>
+                // CARD LAYOUT MATCHING SKETCH
+                const html = `
+                <div class="card card-amoled shadow-xl relative group" data-id="${data.id}">
+                    <div class="card-body p-4">
+                        <div class="flex justify-between items-start mb-2">
+                            <div class="flex items-center gap-3 overflow-hidden">
+                                <i class="fas fa-grip-vertical text-gray-700 drag-handle hover:text-white transition-colors" title="Drag to reorder"></i>
+                                <div>
+                                    <h2 class="card-title text-base text-gray-200 truncate leading-tight">
+                                        <a href="${data.url}" target="_blank" class="hover:text-neonp transition-colors">${data.title || "Unknown Title"}</a>
+                                    </h2>
+                                    <div class="text-xs text-gray-500">${new URL(data.url).hostname.replace('www.','')}</div>
+                                </div>
                             </div>
-                            <input type="number" class="input input-xs input-bordered w-20" 
-                                   value="${data.milestone || 10}" 
-                                   onchange="updateMilestone('${data.id}', this.value)" 
-                                   title="Notify me when this many new chapters accumulate">
-                            <button class="btn btn-xs btn-error btn-outline" onclick="deleteNovel('${data.id}')">Delete</button>
+                            ${unread > 0 ? `<div class="badge badge-info bg-neonc text-black border-none font-bold">+${unread}</div>` : ''}
+                        </div>
+
+                        <div class="w-full bg-gray-900 rounded-full h-1.5 mb-4 overflow-hidden">
+                            <div class="bg-gradient-to-r from-neonp to-neonc h-1.5 rounded-full" style="width: ${progress}%"></div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 text-xs text-gray-400 mb-4 bg-black p-2 rounded border border-gray-800">
+                            <div class="text-center border-r border-gray-800">
+                                <div class="font-bold text-white text-sm">${data.readChapters || 0}</div>
+                                <div>Read</div>
+                            </div>
+                            <div class="text-center border-r border-gray-800">
+                                <div class="font-bold text-white text-sm">${data.totalChapters || 0}</div>
+                                <div>Available</div>
+                            </div>
+                             <div class="text-center flex flex-col items-center justify-center">
+                                <input type="number" class="bg-transparent text-center w-full text-white font-bold text-sm focus:outline-none focus:text-neonp" 
+                                       value="${milestone}" 
+                                       onchange="updateMilestone('${data.id}', this.value)"
+                                       title="Edit Milestone">
+                                <div>Milestone</div>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-between items-center mt-auto">
+                            <div class="join border border-gray-700 rounded-lg">
+                                <button class="btn btn-xs join-item btn-ghost text-gray-400 hover:text-white hover:bg-gray-800" onclick="updateRead('${data.id}', -1)">-</button>
+                                <button class="btn btn-xs join-item btn-ghost text-white hover:bg-gray-800 font-mono">
+                                    +1 Read
+                                </button>
+                                <button class="btn btn-xs join-item btn-ghost text-gray-400 hover:text-white hover:bg-gray-800" onclick="updateRead('${data.id}', 1)">+</button>
+                            </div>
+                            
+                            <button class="btn btn-xs btn-ghost text-red-900 hover:text-red-500 opacity-50 group-hover:opacity-100 transition-opacity" onclick="deleteNovel('${data.id}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
                     </div>
-                </div>
-                `;
+                </div>`;
+                list.innerHTML += html;
             });
+
             document.getElementById('totalNovels').innerText = total;
             document.getElementById('updatesAvailable').innerText = updates;
         }
 
-        // --- 4. ADD NOVELS (FIXED OVERWRITING BUG) ---
-        async function addNovels() {
-            if(isDemo) return alert("Demo Mode: Cannot save to database.");
-            if (!currentUser) return alert("Please login first");
-            
-            const name = document.getElementById('novelName').value.trim();
-            const url = document.getElementById('novelUrl').value.trim();
-            const read = parseInt(document.getElementById('initialRead').value) || 0;
-            
-            if (!url) return alert("Please provide a URL");
+        // --- SORTABLE JS INIT ---
+        const el = document.getElementById('novelList');
+        Sortable.create(el, {
+            handle: '.drag-handle', // Only drag by the icon
+            animation: 150,
+            ghostClass: 'opacity-50',
+            onEnd: function (evt) {
+                // Save the new order to LocalStorage
+                const itemEls = el.children;
+                const newOrder = Array.from(itemEls).map(item => item.getAttribute('data-id'));
+                const key = 'novelOrder_' + (currentUser ? currentUser.uid : 'demo');
+                localStorage.setItem(key, JSON.stringify(newOrder));
+                
+                // Force drop-down to 'Custom'
+                document.getElementById('sortSelect').value = 'custom';
+            }
+        });
 
-            // FIX: Using .add() creates a unique random ID every time
-            // This prevents novels from overwriting each other
+        // --- ACTIONS ---
+        async function addNovels() {
+            if(isDemo) return alert("Demo Mode: Cannot save.");
+            if (!currentUser) return alert("Login required");
+
+            const url = document.getElementById('novelUrl').value.trim();
+            const name = document.getElementById('novelName').value.trim();
+            const read = parseInt(document.getElementById('initialRead').value) || 0;
+            const ms = parseInt(document.getElementById('initialMilestone').value) || 5;
+
+            if(!url) return alert("URL Required");
+
             await db.collection('users').doc(currentUser.uid).collection('novels').add({
                 url: url,
+                title: name || "Pending Sync...",
                 readChapters: read,
-                totalChapters: read, // Initially same as read
-                title: name || "Pending Sync...", 
-                milestone: 5,
+                totalChapters: read,
+                milestone: ms,
                 email: currentUser.email,
                 lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
             });
 
-            document.getElementById('novelName').value = '';
-            document.getElementById('novelUrl').value = '';
-            document.getElementById('initialRead').value = '';
             document.getElementById('my_modal_1').close();
-            alert("Novel added!");
+            // Clear inputs
+            document.getElementById('novelUrl').value = '';
+            document.getElementById('novelName').value = '';
         }
 
         async function batchAddNovels() {
             if(isDemo) return alert("Demo Mode: Cannot save.");
-            if (!currentUser) return alert("Please login first");
-
-            const textArea = document.getElementById('batchUrls');
-            const urls = textArea.value.split('\n').map(u => u.trim()).filter(u => u !== '');
-            
-            if (urls.length === 0) return alert("No URLs found");
-
+            const urls = document.getElementById('batchUrls').value.split('\n').filter(u => u.trim());
             const batch = db.batch();
+            
             urls.forEach(url => {
-                // FIX: Using .doc() with no arguments generates a new random ID
                 const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc();
                 batch.set(ref, {
-                    url: url,
+                    url: url.trim(),
+                    title: "Pending Sync...",
                     readChapters: 0,
                     totalChapters: 0,
-                    title: "Pending Sync...",
                     milestone: 5,
                     email: currentUser.email,
                     lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
@@ -288,64 +404,57 @@
             });
 
             await batch.commit();
-            textArea.value = '';
             document.getElementById('my_modal_batch').close();
-            alert(`Imported ${urls.length} novels!`);
+            document.getElementById('batchUrls').value = '';
         }
 
-        function updateRead(docId, val) {
+        function updateRead(id, change) {
             if(isDemo) {
-                const n = demoData.find(x => x.id == docId);
-                if(n) { n.readChapters = parseInt(val); renderNovels(demoData); }
+                const n = localNovels.find(x => x.id == id);
+                if(n) { n.readChapters += change; applySort(); }
                 return;
             }
-            db.collection('users').doc(currentUser.uid).collection('novels').doc(docId).update({ readChapters: parseInt(val) });
+            
+            // We need to find the current read count safely
+            const novel = localNovels.find(n => n.id === id);
+            const current = novel ? novel.readChapters : 0;
+            const newCount = Math.max(0, current + change); // Prevent negative
+
+            db.collection('users').doc(currentUser.uid).collection('novels').doc(id)
+              .update({ readChapters: newCount });
         }
 
-        function updateMilestone(docId, val) {
+        function updateMilestone(id, val) {
             if(isDemo) return;
-            db.collection('users').doc(currentUser.uid).collection('novels').doc(docId).update({ milestone: parseInt(val) });
+            db.collection('users').doc(currentUser.uid).collection('novels').doc(id)
+              .update({ milestone: parseInt(val) });
         }
 
-        async function deleteNovel(docId) {
+        async function deleteNovel(id) {
             if(isDemo) {
-                const idx = demoData.findIndex(x => x.id == docId);
-                if(idx > -1) { demoData.splice(idx, 1); renderNovels(demoData); }
+                localNovels = localNovels.filter(n => n.id !== id);
+                applySort();
                 return;
             }
-            if (confirm("Are you sure you want to remove this novel from your list?")) {
-                await db.collection('users').doc(currentUser.uid).collection('novels').doc(docId).delete();
+            if(confirm("Delete this novel?")) {
+                await db.collection('users').doc(currentUser.uid).collection('novels').doc(id).delete();
             }
         }
 
-        // --- 5. EMAIL TOGGLE ---
+        // Email Settings
         function loadEmailSetting() {
             if(isDemo) return;
-            db.collection('users').doc(currentUser.uid).get().then((doc) => {
-                if (doc.exists) {
+            db.collection('users').doc(currentUser.uid).get().then(doc => {
+                if(doc.exists) {
                     const paused = doc.data().notificationsPaused || false;
-                    document.getElementById('emailToggle').checked = !paused; 
-                    updateStatusText(!paused);
+                    document.getElementById('emailToggle').checked = !paused;
                 }
             });
         }
 
-        function toggleEmail(isChecked) {
-            updateStatusText(isChecked);
+        function toggleEmail(checked) {
             if(isDemo) return;
-
-            const isPaused = !isChecked; 
-            if(currentUser) {
-                db.collection('users').doc(currentUser.uid).set({
-                    notificationsPaused: isPaused
-                }, { merge: true });
-            }
-        }
-
-        function updateStatusText(isOn) {
-            const text = document.getElementById('emailStatusText');
-            if (isOn) text.innerText = "You will receive emails for new chapters.";
-            else text.innerText = "Emails are PAUSED. Tracker will still update counts.";
+            db.collection('users').doc(currentUser.uid).set({ notificationsPaused: !checked }, { merge: true });
         }
     </script>
 </body>
