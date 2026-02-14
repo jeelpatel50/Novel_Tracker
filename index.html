@@ -117,7 +117,20 @@
                     const sResp = await fetch(`${SERVER_URL}/status/${job_id}`);
                     const data = await sResp.json();
                     document.getElementById('downloadStatusText').innerText = `> Status: [ ${data.status.toUpperCase()} ]`;
-                    if(data.status === 'done') { clearInterval(poll); window.location.href = `${SERVER_URL}/download/${job_id}`; setTimeout(() => document.getElementById('my_modal_download').close(), 2000); }
+                    if(data.status === 'done') {
+    clearInterval(poll);
+    document.getElementById('downloadStatusText').innerText = "> DOWNLOAD STARTING...";
+    
+    // Create a temporary link to force the browser to download the file
+    const link = document.createElement('a');
+    link.href = `${SERVER_URL}/download/${job_id}`;
+    link.setAttribute('download', ''); // Forces download instead of opening
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    setTimeout(() => document.getElementById('my_modal_download').close(), 2000);
+}
                     else if(data.status === 'error') { clearInterval(poll); document.getElementById('downloadStatusText').innerText = "> ERROR: Check Azure terminal."; setTimeout(() => document.getElementById('my_modal_download').close(), 4000); }
                 }, 2000);
             } catch(e) { document.getElementById('downloadStatusText').innerText = "> ERROR: Cannot reach Azure server."; setTimeout(() => document.getElementById('my_modal_download').close(), 3000); }
@@ -202,3 +215,4 @@
     </script>
 </body>
 </html>
+
