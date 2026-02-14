@@ -34,7 +34,6 @@
             <span id="logoText" class="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">NovelTrack</span>
         </div>
         <div class="flex-none gap-4">
-            <button class="btn btn-sm btn-ghost text-gray-400" onclick="my_modal_theme.showModal()"><i class="fas fa-palette"></i></button>
             <div id="userInfo" class="hidden flex items-center gap-3 bg-gray-900/50 px-3 py-1.5 rounded-full border border-gray-800">
                 <img id="userImg" class="w-6 h-6 rounded-full">
                 <button class="btn btn-xs btn-error btn-outline border-none" onclick="logout()">Sign Out</button>
@@ -65,6 +64,24 @@
         <div id="novelList" class="grid grid-cols-1 lg:grid-cols-2 gap-6"></div>
     </div>
 
+    <dialog id="my_modal_1" class="modal">
+        <form method="dialog" class="modal-box bg-[#0f0f0f] border border-gray-700">
+            <h3 class="font-bold text-lg text-white">Add New Novel</h3>
+            <div class="py-4 space-y-4">
+                <input type="url" id="novelUrl" class="input input-bordered w-full bg-black border-gray-700" placeholder="Novel Link (ScribbleHub, NovelBin, etc.)" required>
+                <input type="text" id="novelName" class="input input-bordered w-full bg-black border-gray-700" placeholder="Title (Optional - Auto Fetched)">
+                <div class="grid grid-cols-2 gap-2">
+                    <input type="number" id="initialRead" class="input input-bordered w-full bg-black border-gray-700" placeholder="Chapters Read (e.g. 10)">
+                    <input type="number" id="initialMilestone" class="input input-bordered w-full bg-black border-gray-700" placeholder="Email Goal (e.g. 5)" value="5">
+                </div>
+            </div>
+            <div class="modal-action">
+                <button class="btn btn-primary btn-sm bg-blue-600 border-none text-white" onclick="addNovels()">Save Novel</button>
+                <button class="btn btn-ghost btn-sm text-gray-400">Cancel</button>
+            </div>
+        </form>
+    </dialog>
+
     <dialog id="my_modal_download" class="modal">
         <div class="modal-box bg-[#0f0f0f] border border-gray-800 text-center rounded-3xl">
             <h3 class="font-bold text-lg text-white mb-6">Processing Cloud Download</h3>
@@ -76,49 +93,61 @@
     </dialog>
 
     <script>
+        // Initialize Firebase using the variables from the hidden config.js
         firebase.initializeApp(firebaseConfig);
         const db = firebase.firestore();
         const auth = firebase.auth();
         let currentUser = null, localNovels = [];
 
+        // 1. Authentication (Multi-Account Support)
         auth.onAuthStateChanged(user => {
             if (user) {
                 currentUser = user;
                 document.getElementById('loginBtn').classList.add('hidden');
                 document.getElementById('userInfo').classList.remove('hidden');
                 document.getElementById('userImg').src = user.photoURL;
-                loadNovels();
+                loadNovels(); // Loads only the logged-in user's novels
+            } else {
+                document.getElementById('novelList').innerHTML = `<div class="col-span-2 text-center text-gray-500 py-10">Please log in to view your library.</div>`;
             }
         });
 
+        function login() { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
+        function logout() { auth.signOut(); location.reload(); }
+
+        // 2. Load & Sync Data
         function loadNovels() {
+            // This ensures User A never sees User B's novels
             db.collection('users').doc(currentUser.uid).collection('novels').onSnapshot(snap => {
                 localNovels = snap.docs.map(d => ({id: d.id, ...d.data()}));
                 renderNovels(localNovels);
             });
         }
 
-        async function triggerDownload(url, read, total) {
-            document.getElementById('my_modal_download').showModal();
-            try {
-                const resp = await fetch(`${SERVER_URL}/start-download`, {
-                    method: 'POST', headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ url, read, total })
-                });
-                const { job_id } = await resp.json();
-                const poll = setInterval(async () => {
-                    const sResp = await fetch(`${SERVER_URL}/status/${job_id}`);
-                    const data = await sResp.json();
-                    document.getElementById('downloadStatusText').innerText = `Status: ${data.status.toUpperCase()}`;
-                    if(data.status === 'done') {
-                        clearInterval(poll);
-                        window.location.href = `${SERVER_URL}/download/${job_id}`;
-                        setTimeout(() => document.getElementById('my_modal_download').close(), 2000);
-                    }
-                }, 2000);
-            } catch(e) { alert("Azure server offline!"); document.getElementById('my_modal_download').close(); }
+        async function addNovels() {
+            if(!currentUser) return;
+            const url = document.getElementById('novelUrl').value;
+            const name = document.getElementById('novelName').value;
+            const read = parseInt(document.getElementById('initialRead').value) || 0;
+            const milestone = parseInt(document.getElementById('initialMilestone').value) || 5;
+            
+            if(!url) return;
+
+            await db.collection('users').doc(currentUser.uid).collection('novels').add({ 
+                url: url, 
+                title: name || "Pending Sync...", 
+                readChapters: read, 
+                totalChapters: read, 
+                milestone: milestone,
+                email: currentUser.email // Saved for the background email scraper
+            });
+            
+            document.getElementById('my_modal_1').close();
+            document.getElementById('novelUrl').value = '';
+            document.getElementById('novelName').value = '';
         }
 
+        // 3. Render UI
         function renderNovels(novels) {
             const list = document.getElementById('novelList');
             list.innerHTML = '';
@@ -140,8 +169,8 @@
                     
                     <div class="flex-grow min-w-0">
                         <div class="flex justify-between items-start mb-2">
-                            <h2 class="font-bold text-gray-100 truncate text-lg pr-2">${data.title}</h2>
-                            <div class="radial-progress ${circleColor} bg-black/50 text-[10px] font-black border-2 border-black" style="--value:${circleVal}; --size:2.8rem; --thickness: 4px;" role="progressbar">${unread}</div>
+                            <h2 class="font-bold text-gray-100 truncate text-lg pr-2"><a href="${data.url}" target="_blank" class="hover:text-blue-400 transition-colors">${data.title}</a></h2>
+                            <div class="radial-progress ${circleColor} bg-black/50 text-[10px] font-black border-2 border-black shrink-0" style="--value:${circleVal}; --size:2.8rem; --thickness: 4px;" role="progressbar">${unread}</div>
                         </div>
 
                         <div class="w-full bg-gray-900 h-1 rounded-full mb-4 overflow-hidden">
@@ -149,9 +178,9 @@
                         </div>
 
                         <div class="grid grid-cols-3 gap-1 bg-black/40 p-2 rounded-2xl border border-gray-800/50 mb-4">
-                            <div class="text-center border-r border-gray-800"><div class="text-[9px] font-bold text-gray-500 uppercase">Read</div><div class="text-white font-bold">${data.readChapters}</div></div>
-                            <div class="text-center border-r border-gray-800"><div class="text-[9px] font-bold text-gray-500 uppercase">Total</div><div class="text-white font-bold">${data.totalChapters}</div></div>
-                            <div class="text-center"><div class="text-[9px] font-bold text-gray-500 uppercase">Goal</div><div class="text-white font-bold">${milestone}</div></div>
+                            <div class="text-center border-r border-gray-800"><div class="text-[9px] font-bold text-gray-500 uppercase">Read</div><input type="number" class="editable-num text-white text-sm" value="${data.readChapters}" onchange="updateRead('${data.id}', this.value)"></div>
+                            <div class="text-center border-r border-gray-800"><div class="text-[9px] font-bold text-gray-500 uppercase">Total</div><div class="text-white font-bold text-sm mt-0.5">${data.totalChapters}</div></div>
+                            <div class="text-center"><div class="text-[9px] font-bold text-gray-500 uppercase">Goal</div><input type="number" class="editable-num text-white text-sm" value="${milestone}" onchange="updateMilestone('${data.id}', this.value)"></div>
                         </div>
 
                         <div class="flex justify-between items-center">
@@ -172,14 +201,42 @@
             document.getElementById('updatesAvailable').innerText = unreadTotal;
         }
 
+        // 4. Update Actions
+        async function updateRead(id, val) { db.collection('users').doc(currentUser.uid).collection('novels').doc(id).update({readChapters: parseInt(val)}); }
+        async function updateMilestone(id, val) { db.collection('users').doc(currentUser.uid).collection('novels').doc(id).update({milestone: parseInt(val)}); }
         async function changeRead(id, amt) {
             const novel = localNovels.find(n => n.id === id);
             const newVal = (novel.readChapters || 0) + amt;
             db.collection('users').doc(currentUser.uid).collection('novels').doc(id).update({readChapters: newVal});
         }
         async function deleteNovel(id) { if(confirm("Delete novel?")) db.collection('users').doc(currentUser.uid).collection('novels').doc(id).delete(); }
-        function login() { auth.signInWithPopup(new firebase.auth.GoogleAuthProvider()); }
-        function logout() { auth.signOut(); location.reload(); }
+
+        // 5. Azure Downloader
+        async function triggerDownload(url, read, total) {
+            document.getElementById('my_modal_download').showModal();
+            try {
+                const resp = await fetch(`${SERVER_URL}/start-download`, {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ url, read, total })
+                });
+                const { job_id } = await resp.json();
+                const poll = setInterval(async () => {
+                    const sResp = await fetch(`${SERVER_URL}/status/${job_id}`);
+                    const data = await sResp.json();
+                    document.getElementById('downloadStatusText').innerText = `Status: ${data.status.toUpperCase()}`;
+                    if(data.status === 'done') {
+                        clearInterval(poll);
+                        window.location.href = `${SERVER_URL}/download/${job_id}`;
+                        setTimeout(() => document.getElementById('my_modal_download').close(), 2000);
+                    } else if (data.status === 'error') {
+                        clearInterval(poll);
+                        document.getElementById('downloadStatusText').innerText = `Error: Check Azure Logs`;
+                        setTimeout(() => document.getElementById('my_modal_download').close(), 3000);
+                    }
+                }, 2000);
+            } catch(e) { alert("Azure server offline!"); document.getElementById('my_modal_download').close(); }
+        }
+
         Sortable.create(document.getElementById('novelList'), { animation: 150 });
     </script>
 </body>
