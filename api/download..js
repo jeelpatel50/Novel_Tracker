@@ -1,10 +1,12 @@
 export default async function handler(req, res) {
-  const azureIp = process.env.AZURE_SERVER_IP;
+  const azureIp = process.env.AZURE_SERVER_IP; 
+
   if (!azureIp) {
-    return res.status(500).json({ error: "Azure IP not configured in Vercel" });
+    return res.status(500).json({ error: "Azure IP not found in Vercel secrets." });
   }
 
-  const targetUrl = `${azureIp}${req.url.replace('/api/download', '')}`;
+  const targetPath = req.url.replace('/api/download', '');
+  const targetUrl = `${azureIp}${targetPath}`;
 
   try {
     const response = await fetch(targetUrl, {
@@ -13,9 +15,11 @@ export default async function handler(req, res) {
       body: req.method === 'POST' ? JSON.stringify(req.body) : null,
     });
 
+    // 3. Forward the response back to your website
     const data = await response.json();
     res.status(response.status).json(data);
   } catch (error) {
-    res.status(500).json({ error: "Could not reach Azure server" });
+    // This happens if the Azure Python server is turned off
+    res.status(502).json({ error: "Azure server is unreachable. Check your Python script." });
   }
 }
