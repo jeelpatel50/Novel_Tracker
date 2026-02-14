@@ -1,8 +1,0 @@
-{
-  "rewrites": [
-    {
-      "source": "/api/azure/:path*",
-      "destination": "http://REPLACEME/:path*"
-    }
-  ]
-}
