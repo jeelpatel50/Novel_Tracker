@@ -5,7 +5,7 @@ on:
   workflow_dispatch: 
 
 jobs:
-  scrape:
+  scrape-and-notify:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -18,13 +18,13 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          pip install firebase-admin requests cloudscraper lxml python-dotenv
-
-      - name: Create Secrets File
-        run: |
-          echo '${{ secrets.FIREBASE_CREDENTIALS }}' > serviceAccountKey.json
+          pip install firebase-admin requests cloudscraper lxml
 
       - name: Run Scraper
         env:
-          TARGET_USER_ID: ${{ secrets.TARGET_USER_ID }}
+          FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
+          EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
+          EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          EMAILJS_PUBLIC_KEY: ${{ secrets.EMAILJS_PUBLIC_KEY }}
+          EMAILJS_PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
         run: python scraper.py
