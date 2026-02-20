@@ -1,368 +1,198 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="black">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>NovelTrack</title>
-    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.7.3/dist/full.css" rel="stylesheet" type="text/css" />
+    <link href="https://cdn.jsdelivr.net/npm/daisyui@3.9.4/dist/full.css" rel="stylesheet" type="text/css" />
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    
+    <script src="config.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: { colors: { amoled: '#000000', cardbg: '#121212', } }
+            }
+        }
+    </script>
     <style>
-        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #e2e8f0; }
-        .novel-card { transition: transform 0.2s; }
-        .novel-card:hover { transform: translateY(-5px); }
+        body { background-color: #000000; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+        .card-amoled { background-color: #121212; border: 1px solid #222; transition: all 0.2s ease-in-out; }
+        .card-amoled:hover { border-color: #444; transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5); }
+        .editable-num { background: transparent; border: 1px solid transparent; color: white; text-align: center; font-weight: bold; width: 100%; border-radius: 6px; padding: 2px; cursor: text; transition: all 0.2s; }
+        .editable-num:hover { border-color: #444; background: #111; }
+        .editable-num:focus { outline: none; border-color: var(--grad-start); background: #1a1a1a;}
+        input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        @keyframes progress-loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .progress-bar-animated { background: linear-gradient(90deg, var(--grad-start) 25%, var(--grad-end) 50%, var(--grad-start) 75%); background-size: 200% 100%; animation: progress-loading 1.5s infinite linear; }
+        .sortable-ghost { opacity: 0.2; border: 2px dashed var(--grad-start); border-radius: 1rem; }
     </style>
 </head>
-<body class="min-h-screen p-4 pb-20">
+<body class="min-h-screen p-4 pb-20 selection:bg-purple-500 selection:text-white">
 
-    <div class="navbar bg-base-100 rounded-box shadow-xl mb-6">
+    <div class="navbar bg-cardbg border-b border-gray-800 rounded-box mb-6 shadow-lg">
         <div class="flex-1">
-            <a class="btn btn-ghost normal-case text-xl text-primary">NovelTrack</a>
+            <a class="btn btn-ghost normal-case text-xl font-bold">
+                <i class="fas fa-book-open mr-2" id="logoIcon"></i> 
+                <span id="logoText" class="text-transparent bg-clip-text bg-gradient-to-r from-purple-500 to-cyan-500">NovelTrack</span>
+            </a>
         </div>
         <div class="flex-none gap-2">
-            <button id="demoBtn" class="btn btn-outline btn-sm" onclick="enterDemoMode()">Demo Mode</button>
-            <button id="loginBtn" class="btn btn-primary" onclick="login()">Sync / Login</button>
-            <div id="userInfo" class="hidden flex items-center gap-2">
-                <span id="userName" class="text-sm font-bold"></span>
-                <img id="userImg" class="w-8 h-8 rounded-full">
-                <button class="btn btn-ghost btn-sm" onclick="logout()">Sign Out</button>
+            <button class="btn btn-sm btn-outline border-gray-700 hover:bg-gray-800 hover:text-white" onclick="my_modal_theme.showModal()"><i class="fas fa-palette mr-1"></i> Theme</button>
+            <div id="authButtons" class="flex gap-2">
+                <button class="btn btn-outline btn-sm btn-info" onclick="enterDemoMode()">Demo</button>
+                <button id="loginBtn" class="btn btn-primary btn-sm border-none bg-gradient-to-r from-purple-600 to-blue-600 text-white" onclick="login()">Login</button>
+            </div>
+            <div id="userInfo" class="hidden flex items-center gap-3 bg-black px-3 py-1.5 rounded-full border border-gray-800">
+                <img id="userImg" class="w-6 h-6 rounded-full border border-gray-500">
+                <button class="btn btn-xs btn-error btn-outline" onclick="logout()">Sign Out</button>
             </div>
         </div>
     </div>
 
-    <div class="container mx-auto max-w-4xl">
-        
-        <div class="s shadow w-full mb-6 bg-base-200">
-            <div class="flex flex-col gap-4 mb-6 p-4">
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="stat bg-base-200 rounded-xl shadow">
-                        <div class="stat-title text-xs">Total Novels</div>
-                        <div class="stat-value text-primary text-2xl" id="totalNovels">0</div>
-                    </div>
-                    <div class="stat bg-base-200 rounded-xl shadow">
-                        <div class="stat-title text-xs">Unread</div>
-                        <div class="stat-value text-accent text-2xl" id="updatesAvailable">0</div>
-                    </div>
-                </div>
-
-                <div class="form-control bg-base-200 p-4 rounded-xl shadow">
-                    <label class="cursor-pointer label">
-                        <span class="label-text font-bold">Email Notifications</span> 
-                        <input type="checkbox" id="emailToggle" class="toggle toggle-success" onchange="toggleEmail(this.checked)" />
-                    </label>
-                    <div class="text-xs text-gray-500 mt-1 pl-1" id="emailStatusText">
-                        (Switch off to save quota while testing)
-                    </div>
-                </div>
+    <div class="container mx-auto max-w-5xl">
+        <div class="flex flex-col md:flex-row gap-4 mb-6 justify-between items-end md:items-center bg-cardbg p-5 rounded-2xl border border-gray-800 shadow-md">
+            <div class="flex gap-8">
+                <div><div class="text-[10px] font-bold text-gray-500 tracking-wider">TOTAL LIBRARY</div><div class="text-3xl font-black text-white" id="totalNovels">0</div></div>
+                <div><div class="text-[10px] font-bold text-gray-500 tracking-wider">CHAPTERS READY</div><div class="text-3xl font-black" style="color: var(--grad-end, #06b6d4)" id="updatesAvailable">0</div></div>
+            </div>
+            <div class="flex flex-wrap gap-3 items-center">
+                <select id="sortSelect" class="select select-bordered select-sm bg-black border-gray-700 focus:border-purple-500" onchange="applySort()">
+                    <option value="custom">Custom (Drag)</option><option value="updated">Recently Updated</option><option value="unread">Most Unread</option><option value="az">A-Z Name</option>
+                </select>
+                <button id="addBtn" class="btn btn-sm border-none text-white bg-gradient-to-r from-purple-500 to-cyan-500 shadow-lg shadow-purple-500/20" onclick="my_modal_1.showModal()"><i class="fas fa-plus"></i> Add Novel</button>
             </div>
         </div>
-
-        <div class="flex justify-end mb-4">
-            <button class="btn btn-success" onclick="my_modal_1.showModal()">+ Add Novels</button>
-        </div>
-
-        <div id="novelList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="text-center w-full col-span-2 py-10 text-gray-500">Loading your library...</div>
-        </div>
+        <div id="novelList" class="grid grid-cols-1 lg:grid-cols-2 gap-5"></div>
     </div>
 
-    <dialog id="my_modal_1" class="modal">
-        <form method="dialog" class="modal-box">
-            <h3 class="font-bold text-lg">Add Novels</h3>
-            <div class="py-4 space-y-4">
-                <input type="text" id="novelName" class="input input-bordered w-full" placeholder="Novel Name (e.g. Shadow Slave)">
-                <input type="url" id="novelUrl" class="input input-bordered w-full" placeholder="Novel URL (NovelBin, ScribbleHub, etc.)">
-                <input type="number" id="initialRead" class="input input-bordered w-full" placeholder="Chapters already read (e.g. 150)">
-                <p class="text-xs text-gray-500">Note: The sync bot will update the total chapter count automatically.</p>
-            </div>
-            <div class="modal-action">
-                <button class="btn btn-outline btn-sm" type="button" onclick="my_modal_1.close(); my_modal_batch.showModal()">Switch to Batch</button>
-                <button class="btn" onclick="addNovels()">Import</button>
-                <button class="btn btn-ghost">Close</button>
-            </div>
-        </form>
-    </dialog>
-
-    <dialog id="my_modal_batch" class="modal">
-        <form method="dialog" class="modal-box">
-            <h3 class="font-bold text-lg">Batch Import</h3>
-            <div class="py-4 space-y-4">
-                <p class="text-sm opacity-70">Paste one URL per line:</p>
-                <textarea id="batchUrls" class="textarea textarea-bordered w-full h-40" placeholder="https://novelbin.com/novel/shadow-slave&#10;https://novelbin.com/novel/the-beginning-after-the-end"></textarea>
-            </div>
-            <div class="modal-action">
-                <button class="btn btn-outline btn-sm" type="button" onclick="my_modal_batch.close(); my_modal_1.showModal()">Back to Single</button>
-                <button class="btn btn-success" onclick="batchAddNovels()">Import All</button>
-                <button class="btn btn-ghost">Close</button>
-            </div>
-        </form>
-    </dialog>
+    <dialog id="my_modal_1" class="modal"><form method="dialog" class="modal-box bg-cardbg border border-gray-700"><h3 class="font-bold text-lg text-white">Add New Novel</h3><div class="py-4 space-y-4"><input type="text" id="novelName" class="input input-bordered w-full bg-black border-gray-700" placeholder="Title (Optional)"><input type="url" id="novelUrl" class="input input-bordered w-full bg-black border-gray-700" placeholder="Novel Link (ScribbleHub, NovelBin, etc.)"><div class="grid grid-cols-2 gap-2"><input type="number" id="initialRead" class="input input-bordered w-full bg-black border-gray-700" placeholder="Chapters Read (e.g. 10)"><input type="number" id="initialMilestone" class="input input-bordered w-full bg-black border-gray-700" placeholder="Goal Milestone (e.g. 5)" value="5"></div></div><div class="modal-action"><button class="btn btn-outline btn-sm" type="button" onclick="my_modal_1.close(); my_modal_batch.showModal()">Batch Mode</button><button class="btn btn-primary btn-sm" onclick="addNovels()">Save Novel</button><button class="btn btn-ghost btn-sm">Cancel</button></div></form></dialog>
+    <dialog id="my_modal_batch" class="modal"><form method="dialog" class="modal-box bg-cardbg border border-gray-700"><h3 class="font-bold text-lg text-white">Batch Import</h3><textarea id="batchUrls" class="textarea textarea-bordered w-full h-40 bg-black border-gray-700 font-mono text-xs" placeholder="Paste one URL per line..."></textarea><div class="modal-action"><button class="btn btn-success btn-sm" onclick="batchAddNovels()">Import All</button><button class="btn btn-ghost btn-sm">Cancel</button></div></form></dialog>
+    <dialog id="my_modal_download" class="modal"><div class="modal-box bg-cardbg border border-gray-700 text-center"><h3 class="font-bold text-lg text-white mb-4"><i class="fas fa-cloud text-blue-400 mr-2"></i>Azure Downloader</h3><div class="w-full bg-gray-900 rounded-full h-3 mb-4 overflow-hidden"><div class="h-3 rounded-full progress-bar-animated" style="width: 100%"></div></div><p id="downloadStatusText" class="text-sm text-gray-400 font-mono">Waking up server...</p><div class="modal-action justify-center"><button class="btn btn-ghost btn-sm" onclick="my_modal_download.close()">Run in Background</button></div></div></dialog>
+    <dialog id="my_modal_theme" class="modal"><form method="dialog" class="modal-box bg-cardbg border border-gray-700 p-6 w-80"><div class="w-full h-24 rounded-xl mb-6 border border-gray-600 shadow-inner" id="previewGradient"></div><div class="flex items-center gap-4 mb-4"><span class="text-sm font-bold text-gray-400 w-16">Color 1:</span><input type="color" id="colorStart" class="h-10 w-full cursor-pointer rounded bg-black border-none" oninput="updatePreview()"></div><div class="flex items-center gap-4 mb-6"><span class="text-sm font-bold text-gray-400 w-16">Color 2:</span><input type="color" id="colorEnd" class="h-10 w-full cursor-pointer rounded bg-black border-none" oninput="updatePreview()"></div><button class="btn btn-primary btn-sm w-full" type="button" onclick="saveTheme()">Apply Theme</button></form></dialog>
 
     <script>
-        // --- 1. FIREBASE CONFIGURATION ---
-        const firebaseConfig = {
-          apiKey: "AIzaSyBMTwevULQQojD_aL0jGd5tnN1rikglMmg",
-          authDomain: "novel-f85b9.firebaseapp.com",
-          projectId: "novel-f85b9",
-          storageBucket: "novel-f85b9.firebasestorage.app",
-          messagingSenderId: "850456005043",
-          appId: "1:850456005043:web:dda71a0dc77cd9120063c6",
-          measurementId: "G-3G9ZRSQT79"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
-        const auth = firebase.auth();
-        let currentUser = null;
+        firebase.initializeApp(firebaseConfig); const db = firebase.firestore(); const auth = firebase.auth();
+        let currentUser = null, localNovels = [], isDemo = false;
+        let themeStart = localStorage.getItem('themeStart') || '#a855f7', themeEnd = localStorage.getItem('themeEnd') || '#06b6d4';
 
-        // --- DEMO CONFIG ---
-        let isDemo = false;
-        const demoData = [
-            { id: 'd1', title: 'Creating Heavenly Laws', totalChapters: 215, readChapters: 215, url: 'https://www.scribblehub.com/series/968530/creating-heavenly-laws/', milestone: 5 },
-            { id: 'd2', title: 'Martial God Asura', totalChapters: 5600, readChapters: 5400, url: 'https://novelbin.me/novel/martial-god-asura', milestone: 10 }
-        ];
+        function updateCSS() {
+            document.documentElement.style.setProperty('--grad-start', themeStart); document.documentElement.style.setProperty('--grad-end', themeEnd);
+            document.getElementById('logoText').style.backgroundImage = `linear-gradient(to right, ${themeStart}, ${themeEnd})`;
+            document.getElementById('addBtn').style.backgroundImage = `linear-gradient(to right, ${themeStart}, ${themeEnd})`;
+            document.getElementById('logoIcon').style.color = themeStart; document.getElementById('loginBtn').style.backgroundImage = `linear-gradient(to right, ${themeStart}, ${themeEnd})`;
+            document.getElementById('previewGradient').style.backgroundImage = `linear-gradient(to right, ${themeStart}, ${themeEnd})`;
+        }
+        function updatePreview() { document.getElementById('previewGradient').style.backgroundImage = `linear-gradient(to right, ${document.getElementById('colorStart').value}, ${document.getElementById('colorEnd').value})`; }
+        function saveTheme() { themeStart = document.getElementById('colorStart').value; themeEnd = document.getElementById('colorEnd').value; localStorage.setItem('themeStart', themeStart); localStorage.setItem('themeEnd', themeEnd); updateCSS(); applySort(); document.getElementById('my_modal_theme').close(); }
+        document.getElementById('colorStart').value = themeStart; document.getElementById('colorEnd').value = themeEnd; updateCSS();
 
-        // --- 2. AUTHENTICATION ---
-        function login() {
-            if(isDemo) location.reload(); // Refresh to exit demo
-            const provider = new firebase.auth.GoogleAuthProvider();
-            auth.signInWithPopup(provider);
+        function login() { const provider = new firebase.auth.GoogleAuthProvider(); auth.signInWithPopup(provider); }
+        function logout() { auth.signOut(); location.reload(); }
+        function enterDemoMode() { isDemo = true; localNovels = [{ id: 'd1', title: 'Creating Heavenly Laws', totalChapters: 790, readChapters: 700, url: 'https://novelbin.me/novel/example', milestone: 100, image: 'https://cdn.readnovelfull.com/images/2023/10/creating-heavenly-laws.jpg' }]; applySort(); }
+        auth.onAuthStateChanged(user => { if (user) { currentUser = user; document.getElementById('authButtons').classList.add('hidden'); document.getElementById('userInfo').classList.remove('hidden'); document.getElementById('userImg').src = user.photoURL; loadNovels(); } });
+        function loadNovels() { db.collection('users').doc(currentUser.uid).collection('novels').onSnapshot(snap => { localNovels = snap.docs.map(d => ({id: d.id, ...d.data()})); applySort(); }); }
+
+        async function triggerDownload(url, read, total) {
+            if(SERVER_URL.includes("YOUR_AZURE")) return alert("Update SERVER_URL with your Azure IP!");
+            document.getElementById('my_modal_download').showModal();
+            document.getElementById('downloadStatusText').innerText = "> Preparing download sequence...";
+            try {
+                const resp = await fetch(`${SERVER_URL}/start-download`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ url, read, total }) });
+                const { job_id } = await resp.json();
+                const poll = setInterval(async () => {
+                    const sResp = await fetch(`${SERVER_URL}/status/${job_id}`);
+                    const data = await sResp.json();
+                    document.getElementById('downloadStatusText').innerText = `> Status: [ ${data.status.toUpperCase()} ]`;
+                    if(data.status === 'done') { clearInterval(poll); window.location.href = `${SERVER_URL}/download/${job_id}`; setTimeout(() => document.getElementById('my_modal_download').close(), 2000); }
+                    else if(data.status === 'error') { clearInterval(poll); document.getElementById('downloadStatusText').innerText = "> ERROR: Check Azure terminal."; setTimeout(() => document.getElementById('my_modal_download').close(), 4000); }
+                }, 2000);
+            } catch(e) { document.getElementById('downloadStatusText').innerText = "> ERROR: Cannot reach Azure server."; setTimeout(() => document.getElementById('my_modal_download').close(), 3000); }
         }
 
-        function logout() {
-            auth.signOut().then(() => {
-                window.location.reload();
-            }).catch((error) => {
-                console.error("Sign out error:", error);
-            });
-        }
-
-        // --- DEMO MODE LOGIC ---
-        function enterDemoMode() {
-            isDemo = true;
-            document.getElementById('loginBtn').classList.add('hidden');
-            document.getElementById('demoBtn').classList.add('hidden');
-            document.getElementById('userInfo').classList.remove('hidden');
-            document.getElementById('userName').innerText = "Demo User";
-            document.getElementById('userImg').src = "https://ui-avatars.com/api/?name=Demo+User&background=random";
-            
-            // Turn email toggle ON visually
-            document.getElementById('emailToggle').checked = true;
-            updateStatusText(true);
-
-            renderNovels(demoData);
-            alert("Entered Demo Mode. Actions will not be saved.");
-        }
-
-        auth.onAuthStateChanged((user) => {
-            if (user) {
-                currentUser = user;
-                isDemo = false;
-                document.getElementById('loginBtn').classList.add('hidden');
-                document.getElementById('demoBtn').classList.add('hidden');
-                document.getElementById('userInfo').classList.remove('hidden');
-                document.getElementById('userName').innerText = user.displayName;
-                document.getElementById('userImg').src = user.photoURL;
-                loadNovels();
-                loadEmailSetting();
-            } else if(!isDemo) {
-                document.getElementById('novelList').innerHTML = `<div class="text-center w-full col-span-2">Please login or try Demo Mode.</div>`;
-            }
-        });
-
-        // --- 3. DATA HANDLING ---
-        function loadNovels() {
-            if(isDemo) { renderNovels(demoData); return; }
-
-            db.collection('users').doc(currentUser.uid).collection('novels')
-              .orderBy('lastUpdated', 'desc')
-              .onSnapshot((snapshot) => {
-                const novels = [];
-                snapshot.forEach(doc => {
-                    novels.push({ id: doc.id, ...doc.data() });
-                });
-                renderNovels(novels);
-            });
-        }
-
+        function applySort() { renderNovels(localNovels); }
         function renderNovels(novels) {
-            const list = document.getElementById('novelList');
-            list.innerHTML = '';
-            let total = 0;
-            let updates = 0;
-
-            if (novels.length === 0) {
-                 list.innerHTML = `<div class="text-center w-full col-span-2 text-gray-500">No novels tracked yet.</div>`;
-            }
-
+            const list = document.getElementById('novelList'); list.innerHTML = ''; let unreadTotal = 0;
             novels.forEach(data => {
-                total++;
-                const unread = (data.totalChapters || 0) - (data.readChapters || 0);
-                if(unread > 0) updates++;
+                const unread = (data.totalChapters || 0) - (data.readChapters || 0); if(unread > 0) unreadTotal++;
+                const milestone = data.milestone || 5; const progress = data.totalChapters > 0 ? (data.readChapters / data.totalChapters) * 100 : 0;
+                
+                // --- RADIAL TRACKER LOGIC ---
+                let wheelPct = unread >= milestone ? 100 : (unread / milestone) * 100;
+                const wheelColor = unread >= milestone ? '#4ade80' : themeEnd; // Green if goal met, else theme color
+                
+                let domain = "Link";
+                try { domain = new URL(data.url).hostname.replace('www.',''); } catch(e){}
 
-                const progressVal = data.totalChapters > 0 ? (data.readChapters / data.totalChapters) * 100 : 0;
+                const imgHTML = data.image 
+                    ? `<img src="${data.image}" class="w-20 h-28 object-cover rounded-lg border border-gray-700 shadow-md shrink-0">`
+                    : `<div class="w-20 h-28 bg-gray-900 rounded-lg border border-gray-700 flex items-center justify-center text-gray-700 shadow-md shrink-0"><i class="fas fa-book text-3xl"></i></div>`;
 
-                list.innerHTML += `
-                <div class="card bg-base-200 shadow-xl novel-card border-l-4 ${unread > 0 ? 'border-accent' : 'border-transparent'}">
-                    <div class="card-body p-5">
-                        <h2 class="card-title text-sm truncate">
-                            <a href="${data.url}" target="_blank" class="hover:underline text-primary">${data.title || data.url}</a>
-                            ${unread > 0 ? `<div class="badge badge-accent">+${unread} new</div>` : ''}
-                        </h2>
+                const html = `
+                <div class="card card-amoled rounded-2xl p-4 flex flex-row gap-5 items-center group" data-id="${data.id}">
+                    ${imgHTML}
+                    <div class="flex-grow min-w-0 h-full flex flex-col justify-center">
                         
-                        <div class="w-full bg-gray-700 rounded-full h-2.5 mt-2">
-                            <div class="bg-blue-600 h-2.5 rounded-full" style="width: ${progressVal}%"></div>
-                        </div>
-                        <div class="flex justify-between text-xs mt-1 text-gray-400">
-                            <span>Read: ${data.readChapters || 0}</span>
-                            <span>Total: ${data.totalChapters || '?'}</span>
-                        </div>
-
-                        <div class="flex gap-2 mt-4 items-center">
-                            <div class="flex items-center bg-base-300 rounded-lg p-1">
-                                <button class="btn btn-xs btn-ghost" onclick="updateRead('${data.id}', ${data.readChapters - 1})">-</button>
-                                <input type="number" class="input input-xs w-16 text-center bg-transparent border-none focus:outline-none" 
-                                       value="${data.readChapters || 0}" 
-                                       onchange="updateRead('${data.id}', this.value)">
-                                <button class="btn btn-xs btn-ghost" onclick="updateRead('${data.id}', ${data.readChapters + 1})">+</button>
+                        <div class="flex justify-between items-start gap-2 mb-2">
+                            <div class="min-w-0 pt-1">
+                                <h2 class="font-bold text-gray-100 truncate text-lg leading-tight" title="${data.title}"><a href="${data.url}" target="_blank" class="hover:text-[${themeStart}] transition-colors">${data.title}</a></h2>
+                                <div class="text-[11px] text-gray-500 truncate mt-0.5"><i class="fas fa-link text-[9px] mr-1"></i>${domain}</div>
                             </div>
-                            <input type="number" class="input input-xs input-bordered w-20" 
-                                   value="${data.milestone || 10}" 
-                                   onchange="updateMilestone('${data.id}', this.value)" 
-                                   title="Notify me when this many new chapters accumulate">
-                            <button class="btn btn-xs btn-error btn-outline" onclick="deleteNovel('${data.id}')">Delete</button>
+                            <div class="radial-progress bg-black border-2 border-black text-[11px] font-bold shrink-0 shadow-inner" style="--value:${wheelPct}; --size:2.8rem; --thickness: 4px; color:${wheelColor};" role="progressbar" title="${unread} Unread Chapters">${unread}</div>
                         </div>
+
+                        <div class="w-full bg-black rounded-full h-1.5 mb-3 overflow-hidden shadow-inner border border-gray-800">
+                            <div class="h-full rounded-full" style="width:${progress}%; background:linear-gradient(to right, ${themeStart}, ${themeEnd})"></div>
+                        </div>
+
+                        <div class="grid grid-cols-3 gap-2 bg-[#0a0a0a] p-2 rounded-xl border border-gray-800/50 mb-3 shadow-inner">
+                            <div class="text-center"><input type="number" class="editable-num text-sm" value="${data.readChapters}" onchange="updateRead('${data.id}', this.value)"><div class="text-[9px] font-bold text-gray-600 tracking-wider mt-1">READ</div></div>
+                            <div class="text-center pt-1 font-bold text-white text-sm border-x border-gray-800/50">${data.totalChapters}<div class="text-[9px] font-bold text-gray-600 tracking-wider mt-1.5">TOTAL</div></div>
+                            <div class="text-center"><input type="number" class="editable-num text-sm" value="${milestone}" onchange="updateMilestone('${data.id}', this.value)"><div class="text-[9px] font-bold text-gray-600 tracking-wider mt-1">GOAL</div></div>
+                        </div>
+
+                        <div class="flex justify-between items-center">
+                            <div class="join border border-gray-700 shadow-sm rounded-lg overflow-hidden">
+                                <button class="btn btn-sm join-item bg-black border-none hover:bg-gray-800 text-gray-400" onclick="changeRead('${data.id}', 1)">+1</button>
+                                <button class="btn btn-sm join-item bg-black border-none hover:bg-gray-800 text-white" onclick="changeRead('${data.id}', ${milestone})">+${milestone}</button>
+                            </div>
+                            
+                            <div class="flex gap-2">
+                                <div class="tooltip tooltip-top" data-tip="Download EPUB">
+                                    <button class="btn btn-sm btn-square rounded-lg btn-info border-none bg-blue-600/20 text-blue-400 hover:bg-blue-600 hover:text-white transition-colors" onclick="triggerDownload('${data.url}', ${data.readChapters}, ${data.totalChapters})">
+                                        <i class="fas fa-cloud-download-alt"></i>
+                                    </button>
+                                </div>
+                                <div class="tooltip tooltip-top" data-tip="Delete Novel">
+                                    <button class="btn btn-sm btn-square rounded-lg border-none bg-red-900/30 text-red-500 hover:bg-red-600 hover:text-white transition-colors" onclick="deleteNovel('${data.id}')">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        
                     </div>
-                </div>
-                `;
+                </div>`;
+                list.innerHTML += html;
             });
-            document.getElementById('totalNovels').innerText = total;
-            document.getElementById('updatesAvailable').innerText = updates;
+            document.getElementById('totalNovels').innerText = novels.length; document.getElementById('updatesAvailable').innerText = unreadTotal;
         }
 
-        // --- 4. BATCH IMPORT ---
-        async function addNovels() {
-            if(isDemo) return alert("Demo Mode: Cannot save to database.");
-            if (!currentUser) return alert("Please login first");
-            
-            const name = document.getElementById('novelName').value.trim();
-            const url = document.getElementById('novelUrl').value.trim();
-            const read = parseInt(document.getElementById('initialRead').value) || 0;
-            
-            if (!url) return alert("Please provide a URL");
-
-            let id = btoa(url).substring(0, 20); 
-            const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc(id);
-            
-            await ref.set({
-                url: url,
-                readChapters: read,
-                totalChapters: read, 
-                title: name || "Pending Sync...", 
-                milestone: 5,
-                email: currentUser.email,
-                lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-            }, { merge: true });
-
-            document.getElementById('novelName').value = '';
-            document.getElementById('novelUrl').value = '';
-            document.getElementById('initialRead').value = '';
-            document.getElementById('my_modal_1').close();
-            alert("Novel added!");
-        }
-
-        async function batchAddNovels() {
-            if(isDemo) return alert("Demo Mode: Cannot save to database.");
-            if (!currentUser) return alert("Please login first");
-
-            const textArea = document.getElementById('batchUrls');
-            const urls = textArea.value.split('\n').map(u => u.trim()).filter(u => u !== '');
-            
-            if (urls.length === 0) return alert("No URLs found");
-
-            const batch = db.batch();
-            urls.forEach(url => {
-                let id = btoa(url).substring(0, 20);
-                const ref = db.collection('users').doc(currentUser.uid).collection('novels').doc(id);
-                batch.set(ref, {
-                    url: url,
-                    readChapters: 0,
-                    totalChapters: 0,
-                    title: "Pending Sync...",
-                    milestone: 5,
-                    email: currentUser.email,
-                    lastUpdated: firebase.firestore.FieldValue.serverTimestamp()
-                }, { merge: true });
-            });
-
-            await batch.commit();
-            textArea.value = '';
-            document.getElementById('my_modal_batch').close();
-            alert(`Imported ${urls.length} novels!`);
-        }
-
-        function updateRead(docId, val) {
-            if(isDemo) {
-                // Visual update only
-                const novel = demoData.find(n => n.id === docId);
-                if(novel) {
-                    novel.readChapters = parseInt(val);
-                    renderNovels(demoData);
-                }
-                return;
-            }
-            db.collection('users').doc(currentUser.uid).collection('novels').doc(docId).update({ readChapters: parseInt(val) });
-        }
-
-        function updateMilestone(docId, val) {
-            if(isDemo) return;
-            db.collection('users').doc(currentUser.uid).collection('novels').doc(docId).update({ milestone: parseInt(val) });
-        }
-
-        async function deleteNovel(docId) {
-            if(isDemo) {
-                const idx = demoData.findIndex(n => n.id === docId);
-                if(idx > -1) {
-                    demoData.splice(idx, 1);
-                    renderNovels(demoData);
-                }
-                return;
-            }
-            if (confirm("Are you sure you want to remove this novel from your list?")) {
-                await db.collection('users').doc(currentUser.uid).collection('novels').doc(docId).delete();
-            }
-        }
-
-        // --- 5. EMAIL TOGGLE LOGIC ---
-        function loadEmailSetting() {
-            if(isDemo) return;
-            db.collection('users').doc(currentUser.uid).get().then((doc) => {
-                if (doc.exists) {
-                    const paused = doc.data().notificationsPaused || false;
-                    document.getElementById('emailToggle').checked = !paused; 
-                    updateStatusText(!paused);
-                }
-            });
-        }
-
-        function toggleEmail(isChecked) {
-            updateStatusText(isChecked);
-            if(isDemo) return; 
-
-            const isPaused = !isChecked; 
-            if(currentUser) {
-                db.collection('users').doc(currentUser.uid).set({
-                    notificationsPaused: isPaused
-                }, { merge: true });
-            }
-        }
-
-        function updateStatusText(isOn) {
-            const text = document.getElementById('emailStatusText');
-            if (isOn) text.innerText = "You will receive emails for new chapters.";
-            else text.innerText = "Emails are PAUSED. Tracker will still update counts.";
-        }
+        async function updateRead(id, val) { if(!isDemo) db.collection('users').doc(currentUser.uid).collection('novels').doc(id).update({readChapters: parseInt(val)}); }
+        async function updateMilestone(id, val) { if(!isDemo) db.collection('users').doc(currentUser.uid).collection('novels').doc(id).update({milestone: parseInt(val)}); }
+        async function changeRead(id, amt) { const novel = localNovels.find(n => n.id === id); const newVal = (novel.readChapters || 0) + amt; if(!isDemo) db.collection('users').doc(currentUser.uid).collection('novels').doc(id).update({readChapters: newVal}); }
+        async function deleteNovel(id) { if(confirm("Permanently delete this novel?")) { if(!isDemo) await db.collection('users').doc(currentUser.uid).collection('novels').doc(id).delete(); else { localNovels = localNovels.filter(n => n.id !== id); applySort(); } } }
+        async function addNovels() { const url = document.getElementById('novelUrl').value; const name = document.getElementById('novelName').value; const read = parseInt(document.getElementById('initialRead').value) || 0; if(!currentUser) return; await db.collection('users').doc(currentUser.uid).collection('novels').add({ url, title: name || "New Novel", readChapters: read, totalChapters: read, milestone: 5 }); document.getElementById('my_modal_1').close(); document.getElementById('novelUrl').value = ''; document.getElementById('novelName').value = ''; }
+        Sortable.create(document.getElementById('novelList'), { animation: 150 });
     </script>
 </body>
 </html>

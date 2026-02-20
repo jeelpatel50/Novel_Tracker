@@ -1,0 +1,7 @@
+{
+  "name": "noveltrack",
+  "version": "1.0.0",
+  "scripts": {
+  "build": "echo \"const SERVER_URL = '$AZURE_IP'; const firebaseConfig = { apiKey: '$FB_API_KEY', authDomain: '$FB_DOMAIN', projectId: '$FB_PROJECT', storageBucket: '$FB_BUCKET', messagingSenderId: '$FB_MSG', appId: '$FB_APP' };\" > config.js"
+}
+}
