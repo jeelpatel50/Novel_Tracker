@@ -11,7 +11,6 @@ import time
 # --- 1. AUTHENTICATION (Using your GitHub Secret) ---
 print("--- STARTING MULTI-ACCOUNT CLOUD SCRAPER ---")
 try:
-    # Loads the FIREBASE_CREDENTIALS secret directly
     cred_json = json.loads(os.environ['FIREBASE_CREDENTIALS'])
     cred = credentials.Certificate(cred_json)
     firebase_admin.initialize_app(cred)
@@ -37,10 +36,16 @@ def get_clean_image_url(url):
 def extract_image_from_tree(tree):
     og_img = tree.xpath('//meta[@property="og:image"]/@content')
     if og_img: return get_clean_image_url(og_img[0])
+    
     lazy_img = tree.xpath('//div[contains(@class, "book")]//img/@data-src')
     if lazy_img: return get_clean_image_url(lazy_img[0])
+    
     img = tree.xpath('//div[contains(@class, "book")]//img/@src')
     if img: return get_clean_image_url(img[0])
+    
+    wtr_img = tree.xpath('//img[contains(@class, "cover")]/@src')
+    if wtr_img: return get_clean_image_url(wtr_img[0])
+    
     return None
 
 def parse_rss_count(content):
@@ -114,17 +119,50 @@ def scrape_data(url, needs_image=True):
                          nums = re.findall(r'\d+', latest[0])
                          if nums: data['count'] = int(nums[-1])
 
+        elif "freewebnovel" in url:
+            resp = scraper.get(url, timeout=15)
+            if resp.status_code == 200:
+                tree = html.fromstring(resp.content)
+                if needs_image: data['image'] = extract_image_from_tree(tree)
+                elements = tree.xpath('//a/@href') + tree.xpath('//a/@title') + tree.xpath('//a/text()') + tree.xpath('//span/text()')
+                highest = 0
+                for item in elements:
+                    if not item: continue
+                    matches = re.findall(r'(?:chapter|ch)[-.\s]*(\d+)', str(item).lower())
+                    for match in matches:
+                        val = int(match)
+                        if 0 < val < 20000: highest = max(highest, val)
+                data['count'] = highest
+
+        elif "wtr-lab.com" in url:
+            resp = scraper.get(url, timeout=15)
+            if resp.status_code == 200:
+                tree = html.fromstring(resp.content)
+                if needs_image: data['image'] = extract_image_from_tree(tree)
+                elements = tree.xpath('//a/@href') + tree.xpath('//a/text()')
+                highest = 0
+                for item in elements:
+                    if not item: continue
+                    matches = re.findall(r'(?:chapter|ch)[-.\s_]*(\d+)', str(item).lower())
+                    for match in matches:
+                        val = int(match)
+                        if 0 < val < 20000: highest = max(highest, val)
+                data['count'] = highest
+
     except Exception as e: print(f"   Error: {e}")
     return data
 
 def get_title(url):
     try:
-        title = html.fromstring(scraper.get(url).content).xpath('//title/text()')
-        return title[0].split('|')[0].split('-')[0].strip() if title else url
+        resp = scraper.get(url, timeout=10)
+        tree = html.fromstring(resp.content)
+        title = tree.xpath('//title/text()')
+        if title:
+            return title[0].split('|')[0].split('-')[0].replace('WTR-LAB', '').strip()
+        return url
     except: return url
 
 # --- 5. MAIN LOOP (ALL USERS) ---
-# This grabs every novel from every Google account you log in with
 novels = db.collection_group('novels').stream()
 
 for novel in novels:
@@ -141,7 +179,7 @@ for novel in novels:
         updates = {'totalChapters': result['count']}
         if result['image'] and should_fetch_image: updates['image'] = result['image']
         
-        if "Pending Sync" in current_title or "Unknown" in current_title:
+        if "New Novel" in current_title or "Pending Sync" in current_title or "Unknown" in current_title or "Syncing from Web" in current_title:
              updates['title'] = get_title(url)
              
         novel.reference.update(updates)
@@ -154,5 +192,13 @@ for novel in novels:
         if unread >= milestone and doc_data.get('email'):
             print(f"   📧 Milestone Reached! Sending email...")
             send_email(doc_data.get('email'), updates.get('title', current_title), unread)
+            
+    else:
+        # SAFETY NET
+        if "New Novel" in current_title or "Syncing from Web" in current_title:
+            print(f"   ⚠️ Could not fetch chapters. Marking as failed.")
+            novel.reference.update({
+                'title': '⚠️ Sync Failed (Unsupported/Blocked)'
+            })
 
 print("\n--- DONE ---")
